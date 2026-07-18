@@ -1,7 +1,3 @@
-# Minimal SSH server suitable for memory-constrained appliances.
-# Dropbear supports key and password auth with a much smaller footprint
-# than openssh. Host keys persist under /var/lib/dropbear so they survive
-# reboots.
 {
   lib,
   pkgs,
@@ -11,15 +7,11 @@
 let
   cfg = config.services.dropbear;
   stateDir = "/var/lib/dropbear";
-
-  # dropbear's three default host key names, written under StateDirectory
-  # so they persist across boots.
   hostKeys = map (k: "${stateDir}/${k}") [
     "dropbear_rsa_host_key"
     "dropbear_ecdsa_host_key"
     "dropbear_ed25519_host_key"
   ];
-
   args = [
     "-F" # foreground, for systemd Type=simple
     "-E" # log to stderr, for journald
@@ -49,19 +41,13 @@ in
     allowPasswordAuth = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = ''
-        Whether to allow password authentication.
-        Defaults to false (key-only auth) which is what production wants.
-      '';
+      description = "Allow password authentication. Defaults to key-only.";
     };
 
     allowRootLogin = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = ''
-        Whether to allow root login.
-        Defaults to false. Enable for dev images only.
-      '';
+      description = "Allow root login. Defaults to false.";
     };
   };
 
@@ -79,13 +65,10 @@ in
         Restart = "on-failure";
         RestartSec = "5s";
 
-        # Dropbear runs as root so it can read /etc/shadow, bind port 22,
-        # and switch to the authenticated user. Keep the rest of the
-        # sandbox tight.
         PrivateTmp = true;
         PrivateDevices = true;
         ProtectSystem = "strict";
-        ProtectHome = "read-only"; # needed to read ~/.ssh/authorized_keys
+        ProtectHome = "read-only"; # ~/.ssh/authorized_keys
         ReadWritePaths = [ stateDir ];
         ProtectKernelTunables = true;
         ProtectKernelModules = true;

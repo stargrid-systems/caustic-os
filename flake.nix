@@ -24,7 +24,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # TODO: replace with Aperture's own flake once upstream adds one.
+    # TODO: replace with aperture's own flake once upstream adds one.
     aperture-src = {
       url = "github:stargrid-systems/aperture/24071a1859211d04dff6e0f20c393a9f2a68f7ba";
       flake = false;
@@ -78,9 +78,6 @@
           };
         };
 
-      # Build aperture from source using the toolchain pinned in its rust-toolchain.toml.
-      # This is a temporary local package; once aperture exposes its own flake we will
-      # consume that directly and remove this code path.
       craneLibFor =
         system:
         let
@@ -105,13 +102,10 @@
           doCheck = false;
         };
 
-      # Expose aperture as an attribute on nixpkgs so the service module can
-      # use `mkPackageOption pkgs "aperture" { ... }` without specialArgs.
       apertureOverlay = final: _prev: {
         aperture = apertureFor final.stdenv.hostPlatform.system;
       };
 
-      # A NixOS configuration that boots as a QEMU VM on x86_64-linux.
       devNixosFor =
         system:
         nixpkgs.lib.nixosSystem {
@@ -131,6 +125,7 @@
         cm4PoeUps = import ./hardware/cm4-poe-ups { inherit nixos-hardware; };
         aperture = import ./modules/services/aperture.nix;
         dropbear = import ./modules/services/dropbear.nix;
+        caustic = import ./modules/caustic;
       };
 
       nixosConfigurations.dev = devNixosFor "x86_64-linux";
@@ -142,16 +137,29 @@
           default = apertureFor system;
         }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
-          # Convenience: build the dev VM directly without going through
-          # `nixosConfigurations.dev.config.system.build.vm`.
           devVm = self.nixosConfigurations.dev.config.system.build.vm;
         }
       );
 
-      checks = perSystem (system: {
-        formatting = (treefmtEvalFor system).config.build.check self;
-        pre-commit = preCommitHooksFor system;
-      });
+      checks = perSystem (
+        system:
+        let
+          pkgs = pkgsFor system;
+          inherit (nixpkgs) lib;
+        in
+        {
+          formatting = (treefmtEvalFor system).config.build.check self;
+          pre-commit = preCommitHooksFor system;
+          caustic-hardening = import ./checks/caustic-hardening.nix {
+            inherit
+              pkgs
+              self
+              nixpkgs
+              lib
+              ;
+          };
+        }
+      );
 
       devShells = perSystem (
         system:

@@ -1,8 +1,3 @@
-# NixOS module for the aperture gateway service.
-#
-# Bundles aperture as a systemd service with strict hardening.
-# Storage layout: aperture owns /var/lib/aperture exclusively and manages
-# its own DBs, TLS material, and runtime state under that path.
 {
   lib,
   pkgs,
@@ -24,10 +19,7 @@ in
       example = "[::]:443";
       description = ''
         Socket address aperture will bind to, in `[ip]:port` form.
-        Use `[::]:` to bind on all interfaces (dual-stack: IPv6 with
-        IPv4-mapped addresses).
-        Binding to ports below 1024 is supported via
-        `CAP_NET_BIND_SERVICE` granted to the service.
+        `[::]:` is dual-stack. Ports below 1024 use CAP_NET_BIND_SERVICE.
       '';
     };
 
@@ -35,11 +27,7 @@ in
       type = lib.types.str;
       default = "/var/lib/aperture";
       defaultText = lib.literalExpression "/var/lib/aperture";
-      description = ''
-        Path to aperture's single managed data directory.
-        Contains the libSQL database, TLS material, and any other
-        runtime state aperture needs to persist.
-      '';
+      description = "Aperture's single managed data directory (DB, certs, runtime state).";
     };
   };
 
@@ -49,7 +37,6 @@ in
       group = "aperture";
       home = cfg.dataDir;
       createHome = true;
-      description = "Aperture gateway user";
     };
     users.groups.aperture = { };
 
@@ -69,7 +56,6 @@ in
         Restart = "on-failure";
         RestartSec = "5s";
 
-        # Hardening: no privileges, no escape vectors.
         NoNewPrivileges = true;
         PrivateTmp = true;
         PrivateDevices = true;
@@ -94,7 +80,7 @@ in
         MemoryDenyWriteExecute = false;
         SystemCallArchitectures = "native";
         SystemCallFilter = [ "@system-service" ];
-        # Required to bind ports below 1024 (e.g. 80, 443).
+        # Ports below 1024.
         AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
         CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
       };
