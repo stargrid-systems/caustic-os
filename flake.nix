@@ -24,10 +24,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # TODO: replace with aperture's own flake once upstream adds one.
     aperture-src = {
       url = "github:stargrid-systems/aperture/24071a1859211d04dff6e0f20c393a9f2a68f7ba";
       flake = false;
+    };
+
+    impermanence = {
+      url = "github:nix-community/impermanence";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
@@ -41,6 +45,7 @@
       rust-overlay,
       aperture-src,
       nixos-hardware,
+      impermanence,
       ...
     }:
     let
@@ -117,6 +122,21 @@
             ./systems/dev/default.nix
           ];
         };
+
+      prodNixosFor =
+        system:
+        nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            { nixpkgs.overlays = [ apertureOverlay ]; }
+            self.nixosModules.cm4PoeUps
+            self.nixosModules.aperture
+            self.nixosModules.dropbear
+            self.nixosModules.caustic
+            self.nixosModules.persist
+            ./systems/production/default.nix
+          ];
+        };
     in
     {
       overlays.default = apertureOverlay;
@@ -126,9 +146,13 @@
         aperture = import ./modules/services/aperture.nix;
         dropbear = import ./modules/services/dropbear.nix;
         caustic = import ./modules/caustic;
+        persist = import ./modules/persist { inherit impermanence; };
       };
 
-      nixosConfigurations.dev = devNixosFor "x86_64-linux";
+      nixosConfigurations = {
+        dev = devNixosFor "x86_64-linux";
+        production = prodNixosFor "aarch64-linux";
+      };
 
       packages = perSystem (
         system:
