@@ -1,5 +1,38 @@
 {
   "nodes": {
+    "aperture-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1784388405,
+        "narHash": "sha256-1/fBCQnR1z90Uf6qVNJntbCIbdYUYK7Os15rz0E8Ax4=",
+        "owner": "stargrid-systems",
+        "repo": "aperture",
+        "rev": "24071a1859211d04dff6e0f20c393a9f2a68f7ba",
+        "type": "github"
+      },
+      "original": {
+        "owner": "stargrid-systems",
+        "repo": "aperture",
+        "rev": "24071a1859211d04dff6e0f20c393a9f2a68f7ba",
+        "type": "github"
+      }
+    },
+    "crane": {
+      "locked": {
+        "lastModified": 1779041105,
+        "narHash": "sha256-nnGD2f8OlAZT2i5OfwikJsw+ifWfiA4d6A8BWlgOXV0=",
+        "owner": "ipetkov",
+        "repo": "crane",
+        "rev": "10e6e3cb966f7cfcc789fe5eee7a85f3188ce08b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ipetkov",
+        "ref": "v0.23.4",
+        "repo": "crane",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -86,10 +119,33 @@
     },
     "root": {
       "inputs": {
+        "aperture-src": "aperture-src",
+        "crane": "crane",
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs_2",
         "pre-commit-hooks-nix": "pre-commit-hooks-nix",
+        "rust-overlay": "rust-overlay",
         "treefmt-nix": "treefmt-nix"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1784350408,
+        "narHash": "sha256-OstzLWL5t7Xe14xEC6GIMJCp0PrYNTSA0El7GG2av88=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "3c38e1e1ba9c8d7030f7b5a801398ea7d8a6fdc0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
       }
     },
     "treefmt-nix": {

@@ -14,6 +14,21 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    crane = {
+      url = "github:ipetkov/crane/v0.23.4";
+    };
+
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # TODO: replace with Aperture's own flake once upstream adds one.
+    aperture-src = {
+      url = "github:stargrid-systems/aperture/24071a1859211d04dff6e0f20c393a9f2a68f7ba";
+      flake = false;
+    };
   };
 
   outputs =
@@ -22,6 +37,9 @@
       nixpkgs,
       pre-commit-hooks-nix,
       treefmt-nix,
+      crane,
+      rust-overlay,
+      aperture-src,
       ...
     }:
     let
@@ -30,7 +48,13 @@
         "aarch64-linux"
       ];
       perSystem = nixpkgs.lib.genAttrs supportedSystems;
-      pkgsFor = system: nixpkgs.legacyPackages.${system};
+
+      pkgsFor =
+        system:
+        import nixpkgs {
+          inherit system;
+          overlays = [ rust-overlay.overlays.default ];
+        };
 
       treefmtModule = {
         projectRootFile = "flake.nix";
@@ -52,11 +76,42 @@
             treefmt.enable = true;
           };
         };
+
+      # Build aperture from source using the toolchain pinned in its rust-toolchain.toml.
+      # This is a temporary local package; once aperture exposes its own flake we will
+      # consume that directly and remove this code path.
+      craneLibFor =
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        (crane.mkLib pkgs).overrideToolchain (
+          p: p.rust-bin.fromRustupToolchainFile "${aperture-src}/rust-toolchain.toml"
+        );
+
+      apertureFor =
+        system:
+        let
+          craneLib = craneLibFor system;
+          crateName = craneLib.crateNameFromCargoToml {
+            cargoToml = "${aperture-src}/aperture/Cargo.toml";
+          };
+        in
+        craneLib.buildPackage {
+          src = aperture-src;
+          inherit (crateName) pname version;
+          strictDeps = true;
+          doCheck = false;
+        };
     in
     {
       nixosModules = { };
       nixosConfigurations = { };
-      packages = perSystem (_: { });
+
+      packages = perSystem (system: {
+        aperture = apertureFor system;
+        default = apertureFor system;
+      });
 
       checks = perSystem (system: {
         formatting = (treefmtEvalFor system).config.build.check self;
