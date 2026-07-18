@@ -40,6 +40,7 @@
       crane,
       rust-overlay,
       aperture-src,
+      nixos-hardware,
       ...
     }:
     let
@@ -105,7 +106,9 @@
         };
     in
     {
-      nixosModules = { };
+      nixosModules = {
+        cm4PoeUps = import ./hardware/cm4-poe-ups { inherit nixos-hardware; };
+      };
       nixosConfigurations = { };
 
       packages = perSystem (system: {
