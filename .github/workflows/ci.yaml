@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quick-checks:
+    name: Quick checks
+    runs-on: ubuntu-26.04
+    if: github.event_name != 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d  # v14
+
+      - name: nix flake check
+        run: nix flake check --print-build-logs
+
+  build-images:
+    name: Build images (merge queue)
+    runs-on: ubuntu-26.04-arm
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d  # v14
+
+      # Validates that the flake evaluates cleanly for the target architecture.
+      # Real image outputs land in later phases:
+      #   nix build .#packages.aarch64-linux.productionImage
+      #   nix build .#packages.aarch64-linux.devImage
+      - name: Evaluate flake for aarch64-linux
+        run: nix flake show --system aarch64-linux --print-build-logs
