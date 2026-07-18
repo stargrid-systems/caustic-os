@@ -104,17 +104,49 @@
           strictDeps = true;
           doCheck = false;
         };
+
+      # Expose aperture as an attribute on nixpkgs so the service module can
+      # use `mkPackageOption pkgs "aperture" { ... }` without specialArgs.
+      apertureOverlay = final: _prev: {
+        aperture = apertureFor final.stdenv.hostPlatform.system;
+      };
+
+      # A NixOS configuration that boots as a QEMU VM on x86_64-linux.
+      devNixosFor =
+        system:
+        nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            { nixpkgs.overlays = [ apertureOverlay ]; }
+            self.nixosModules.aperture
+            self.nixosModules.dropbear
+            ./systems/dev/default.nix
+          ];
+        };
     in
     {
+      overlays.default = apertureOverlay;
+
       nixosModules = {
         cm4PoeUps = import ./hardware/cm4-poe-ups { inherit nixos-hardware; };
+        aperture = import ./modules/services/aperture.nix;
+        dropbear = import ./modules/services/dropbear.nix;
       };
-      nixosConfigurations = { };
 
-      packages = perSystem (system: {
-        aperture = apertureFor system;
-        default = apertureFor system;
-      });
+      nixosConfigurations.dev = devNixosFor "x86_64-linux";
+
+      packages = perSystem (
+        system:
+        {
+          aperture = apertureFor system;
+          default = apertureFor system;
+        }
+        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          # Convenience: build the dev VM directly without going through
+          # `nixosConfigurations.dev.config.system.build.vm`.
+          devVm = self.nixosConfigurations.dev.config.system.build.vm;
+        }
+      );
 
       checks = perSystem (system: {
         formatting = (treefmtEvalFor system).config.build.check self;
