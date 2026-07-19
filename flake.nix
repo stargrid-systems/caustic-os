@@ -220,13 +220,11 @@
       nixosConfigurations = {
         dev = devNixosFor "x86_64-linux";
         production = prodNixosFor "aarch64-linux" { };
-        devImage =
-          prodNixosFor "aarch64-linux"
-            {
-              securebootKeys = null;
-              imageId = "caustic-os-dev";
-              otaRegistry = "ghcr.io/stargrid-systems/caustic-os-dev";
-            };
+        devImage = prodNixosFor "aarch64-linux" {
+          securebootKeys = null;
+          imageId = "caustic-os-dev";
+          otaRegistry = "ghcr.io/stargrid-systems/caustic-os-dev";
+        };
       };
 
       packages = perSystem (
