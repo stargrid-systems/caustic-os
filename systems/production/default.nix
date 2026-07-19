@@ -2,6 +2,8 @@
   lib,
   pkgs,
   securebootKeys ? null,
+  imageId ? "caustic-os",
+  otaRegistry ? "ghcr.io/stargrid-systems/caustic-os",
   ...
 }:
 let
@@ -32,10 +34,12 @@ in
     system = {
       stateVersion = "26.05";
       image = {
-        id = "caustic-os";
+        id = lib.mkDefault imageId;
         version = lib.mkDefault (lib.strings.trim versionFile);
       };
     };
+
+    services.caustic-ota.registry = lib.mkDefault otaRegistry;
 
     boot = {
       loader = {
