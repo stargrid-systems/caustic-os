@@ -4,13 +4,28 @@
   ...
 }:
 {
+  imports = [ ./image.nix ];
+
   system.stateVersion = "26.05";
+  system.image.id = "caustic-os";
+
+  boot = {
+    loader = {
+      grub.enable = false;
+      generic-extlinux-compatible.enable = false;
+    };
+    initrd.systemd.enable = true;
+  };
+
+  hardware.deviceTree.enable = true;
 
   fileSystems = {
     "/" = {
-      device = "/dev/disk/by-partlabel/root-a";
-      fsType = "ext4";
-      options = [ "ro" ];
+      fsType = "tmpfs";
+      options = [
+        "mode=755"
+        "size=50%"
+      ];
       neededForBoot = true;
     };
     "/persist" = {

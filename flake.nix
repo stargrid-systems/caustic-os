@@ -54,12 +54,25 @@
         "aarch64-linux"
       ];
       perSystem = nixpkgs.lib.genAttrs supportedSystems;
+      inherit (nixpkgs) lib;
 
       pkgsFor =
         system:
         import nixpkgs {
           inherit system;
-          overlays = [ rust-overlay.overlays.default ];
+          overlays = [
+            rust-overlay.overlays.default
+          ]
+          ++ lib.optional (system == "aarch64-linux") (
+            _final: prev: {
+              "auto-patchelf" = prev."auto-patchelf".overrideAttrs (old: {
+                postInstall = (old.postInstall or "") + ''
+                  sed -i '1 a import sys; sys.path.insert(0, "${prev.python3Packages.pyelftools}/lib/python${prev.python3.pythonVersion}/site-packages")' \
+                    $out/bin/auto-patchelf
+                '';
+              });
+            }
+          );
         };
 
       treefmtModule = {
@@ -128,6 +141,13 @@
         nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
+            ({ modulesPath, ... }: {
+              imports = [
+                "${modulesPath}/image/repart.nix"
+                "${modulesPath}/image/repart-verity-store.nix"
+                "${modulesPath}/system/boot/uki.nix"
+              ];
+            })
             { nixpkgs.overlays = [ apertureOverlay ]; }
             self.nixosModules.cm4PoeUps
             self.nixosModules.aperture
@@ -162,6 +182,9 @@
         }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
           devVm = self.nixosConfigurations.dev.config.system.build.vm;
+        }
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
+          productionImage = self.nixosConfigurations.production.config.system.build.image;
         }
       );
 
