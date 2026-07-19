@@ -40,6 +40,14 @@ in
       ];
       neededForBoot = true;
     };
+    "/boot" = {
+      device = "/dev/disk/by-partlabel/ESP";
+      fsType = "vfat";
+      options = [
+        "rw"
+        "nofail"
+      ];
+    };
     "/persist" = {
       device = "/dev/disk/by-partlabel/persist";
       fsType = "ext4";
@@ -50,6 +58,7 @@ in
   caustic = {
     hardening.enable = true;
     networking.enable = true;
+    recovery.enable = true;
     users.enable = true;
     persist.enable = true;
   };

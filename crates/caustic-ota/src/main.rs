@@ -19,6 +19,8 @@ use tracing::{info, warn};
 const STAGING_DIR: &str = "/var/lib/caustic-ota/staging";
 const STATE_FILE: &str = "/var/lib/caustic-ota/state.json";
 const SYSUPDATE_BIN: &str = "/run/current-system/sw/bin/systemd-sysupdate";
+const SYSTEMCTL_BIN: &str = "/run/current-system/sw/bin/systemctl";
+const FACTORY_RESET_SENTINEL: &str = "/persist/.factory-reset";
 const VERSION_ANNOTATION: &str = "org.opencontainers.image.version";
 
 #[derive(Parser)]
@@ -41,7 +43,10 @@ enum Command_ {
         registry: String,
         #[arg(long, default_value = "latest")]
         tag: String,
+        #[arg(long, default_value_t = false)]
+        force: bool,
     },
+    FactoryReset,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -60,7 +65,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command_::Check { registry, tag } => check(&registry, &tag).await,
-        Command_::Update { registry, tag } => update(&registry, &tag).await,
+        Command_::Update {
+            registry,
+            tag,
+            force,
+        } => update(&registry, &tag, force).await,
+        Command_::FactoryReset => factory_reset(),
     }
 }
 
@@ -78,7 +88,11 @@ async fn check(registry: &str, tag: &str) -> Result<()> {
     Ok(())
 }
 
-async fn update(registry: &str, tag: &str) -> Result<()> {
+async fn update(registry: &str, tag: &str, force: bool) -> Result<()> {
+    if !force {
+        verify_boot_healthy()?;
+    }
+
     let manifest = fetch_manifest(registry, tag).await?;
     let version = extract_version(&manifest)?;
     let state = read_state().unwrap_or_else(|_| State { current_version: String::new() });
@@ -106,6 +120,31 @@ async fn update(registry: &str, tag: &str) -> Result<()> {
 
     write_state(&State { current_version: version.clone() })?;
     info!(%version, "update staged, reboot pending");
+    Ok(())
+}
+
+fn verify_boot_healthy() -> Result<()> {
+    let output = Command::new(SYSTEMCTL_BIN)
+        .args(["is-system-running"])
+        .output()
+        .context("run systemctl is-system-running")?;
+    let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    match status.as_str() {
+        "running" | "degraded" => Ok(()),
+        other => Err(anyhow!(
+            "current boot is unhealthy ({other}); refusing to update (use --force to override)"
+        )),
+    }
+}
+
+fn factory_reset() -> Result<()> {
+    let sentinel = Path::new(FACTORY_RESET_SENTINEL);
+    if let Some(parent) = sentinel.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create {}", parent.display()))?;
+    }
+    fs::write(sentinel, "1\n").context("write factory-reset sentinel")?;
+    info!("factory reset requested; reboot to complete");
     Ok(())
 }
 

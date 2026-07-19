@@ -40,7 +40,11 @@ in
         ExecStart = "${pkgs.caustic-ota}/bin/caustic-ota update --registry ${cfg.registry} --tag ${cfg.tag}";
         StateDirectory = "caustic-ota";
         ProtectSystem = "strict";
-        ReadWritePaths = "/var/lib/caustic-ota /boot/EFI/Linux";
+        ReadWritePaths = [
+          "/var/lib/caustic-ota"
+          "/persist"
+          "/boot/EFI/Linux"
+        ];
         CapabilityBoundingSet = "";
         NoNewPrivileges = true;
         PrivateTmp = true;
