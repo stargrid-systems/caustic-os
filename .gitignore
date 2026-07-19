@@ -1,2 +1,5 @@
 /result
 /result-*
+/target
+crates/*/target
+

@@ -120,16 +120,34 @@
           doCheck = false;
         };
 
-      apertureOverlay = final: _prev: {
+      causticOtaFor =
+        system:
+        let
+          craneLib = craneLibFor system;
+          crate = craneLib.buildPackage {
+            src = craneLib.path ./crates/caustic-ota;
+            strictDeps = true;
+            doCheck = false;
+          };
+        in
+        crate.overrideAttrs (old: {
+          meta = (old.meta or { }) // {
+            mainProgram = "caustic-ota";
+          };
+        });
+
+      osOverlay = final: _prev: {
         aperture = apertureFor final.stdenv.hostPlatform.system;
+        caustic-ota = causticOtaFor final.stdenv.hostPlatform.system;
       };
+      apertureOverlay = osOverlay;
 
       devNixosFor =
         system:
         nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
-            { nixpkgs.overlays = [ apertureOverlay ]; }
+            { nixpkgs.overlays = [ osOverlay ]; }
             self.nixosModules.aperture
             self.nixosModules.dropbear
             ./systems/dev/default.nix
@@ -146,15 +164,18 @@
                 "${modulesPath}/image/repart.nix"
                 "${modulesPath}/image/repart-verity-store.nix"
                 "${modulesPath}/system/boot/uki.nix"
+                "${modulesPath}/system/boot/systemd/sysupdate.nix"
               ];
             })
-            { nixpkgs.overlays = [ apertureOverlay ]; }
+            { nixpkgs.overlays = [ osOverlay ]; }
             self.nixosModules.cm4PoeUps
             self.nixosModules.aperture
             self.nixosModules.dropbear
             self.nixosModules.caustic
+            self.nixosModules.causticOta
             self.nixosModules.persist
             ./systems/production/default.nix
+            ./systems/production/updates.nix
           ];
         };
     in
@@ -166,6 +187,7 @@
         aperture = import ./modules/services/aperture.nix;
         dropbear = import ./modules/services/dropbear.nix;
         caustic = import ./modules/caustic;
+        causticOta = import ./modules/services/caustic-ota.nix;
         persist = import ./modules/persist { inherit impermanence; };
       };
 
@@ -178,6 +200,7 @@
         system:
         {
           aperture = apertureFor system;
+          caustic-ota = causticOtaFor system;
           default = apertureFor system;
         }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {

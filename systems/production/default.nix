@@ -3,11 +3,23 @@
   pkgs,
   ...
 }:
+let
+  versionFile = lib.fileContents ../../version.txt;
+in
 {
-  imports = [ ./image.nix ];
+  imports = [
+    ./image.nix
+    ./update-package.nix
+    ./updates.nix
+  ];
 
-  system.stateVersion = "26.05";
-  system.image.id = "caustic-os";
+  system = {
+    stateVersion = "26.05";
+    image = {
+      id = "caustic-os";
+      version = lib.mkDefault (lib.strings.trim versionFile);
+    };
+  };
 
   boot = {
     loader = {
@@ -44,6 +56,7 @@
 
   services = {
     aperture.enable = true;
+    caustic-ota.enable = true;
 
     avahi = {
       enable = true;

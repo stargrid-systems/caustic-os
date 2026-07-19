@@ -35,12 +35,23 @@ let
     default @saved
     editor no
   '';
+
+  version = config.system.image.version;
 in
 {
   image.repart = {
     name = "caustic-os";
 
-    verityStore.enable = true;
+    split = true;
+
+    verityStore = {
+      enable = true;
+      partitionIds = {
+        esp = "00-esp";
+        store-verity = "10-store-verity";
+        store = "20-store";
+      };
+    };
 
     compression = {
       enable = true;
@@ -55,6 +66,7 @@ in
           Format = "vfat";
           Label = "ESP";
           SizeMinBytes = "256M";
+          SplitName = "-";
         };
         contents = {
           "/RPI_EFI.fd".source = "${rpi4Uefi}/RPI_EFI.fd";
@@ -69,12 +81,27 @@ in
         };
       };
 
+      "10-store-verity".repartConfig = {
+        SizeMinBytes = "64M";
+        SizeMaxBytes = "64M";
+        Label = "verity-${version}";
+        SplitName = "verity";
+        ReadOnly = 1;
+      };
+      "20-store".repartConfig = {
+        Minimize = "best";
+        Label = "usr-${version}";
+        SplitName = "usr";
+        ReadOnly = 1;
+      };
+
       "30-persist" = {
         repartConfig = {
           Type = "linux-generic";
           Format = "ext4";
           Label = "persist";
           SizeMinBytes = "1G";
+          SplitName = "-";
         };
       };
     };

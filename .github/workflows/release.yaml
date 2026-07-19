@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version string (e.g. 2026.07.1)
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  release:
+    name: Build and publish image
+    runs-on: ubuntu-26.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write version.txt
+        run: printf '%s' '${{ steps.version.outputs.version }}' > version.txt
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d  # v14
+
+      - name: Build update package
+        run: |
+          nix build \
+            .#nixosConfigurations.production.config.system.build.updatePackage \
+            --out-link update \
+            --print-build-logs
+
+      - name: Compose OCI artifact
+        run: |
+          mkdir -p artifact
+          cp update/* artifact/
+          sha256sum artifact/* > artifact/SHA256SUMS
+
+      - name: Install oras
+        uses: oras-project/setup-oras@5c0d5ca8ac2821bc95a9896c24d37559baepc6e3  # v1.2.0
+
+      - name: Login to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push OCI artifact
+        run: |
+          oras push \
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }} \
+            --annotation "org.opencontainers.image.version=${{ steps.version.outputs.version }}" \
+            $(find artifact -type f -printf '%p:%f ')
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.8.2
+
+      - name: Sign artifact keyless
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
