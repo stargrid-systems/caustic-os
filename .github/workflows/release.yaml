@@ -22,7 +22,7 @@ jobs:
     if: |
       github.event_name == 'push' &&
       !startsWith(github.event.head_commit.message, 'release:')
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-slim
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -95,7 +95,7 @@ jobs:
       github.event.pull_request.merged == true &&
       github.event.pull_request.base.ref == 'main' &&
       contains(github.event.pull_request.labels.*.name, 'release')
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-slim
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -111,7 +111,7 @@ jobs:
           v=$(tr -d '[:space:]' < version.txt)
           echo "version=${v}" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub release
+      - name: Create draft GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -120,7 +120,8 @@ jobs:
           gh release create "${VERSION}" \
             --target "${MERGE_SHA}" \
             --title "${VERSION}" \
-            --notes "Release ${VERSION}. See commit history for details."
+            --notes "Release ${VERSION}. See commit history for details." \
+            --draft
 
   build-dev:
     name: Build dev image
@@ -253,3 +254,15 @@ jobs:
           trap 'rm -f /tmp/cosign.key' EXIT
           cosign sign --yes --key /tmp/cosign.key \
             ghcr.io/${{ github.repository }}:${VERSION}
+
+  publish:
+    name: Publish release
+    needs: [tag, build-prod]
+    runs-on: ubuntu-slim
+    steps:
+      - name: Mark release as non-draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          gh release edit "${VERSION}" --repo ${{ github.repository }} --draft=false
