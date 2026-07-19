@@ -9,6 +9,24 @@ nix develop   # enter dev shell with linters and tools
 nix flake check
 ```
 
+## Releases
+
+CalVer (`YYYY.MM.N`). A release PR is auto-opened on `main` and bumps
+`version.txt`. Merging it tags the merge commit. The dev image builds
+immediately (environment `dev`); the prod image build waits for approval in
+the `prod` environment.
+
+Required GitHub environments and secrets:
+
+- `dev`: `COSIGN_PRIVATE_KEY`, `COSIGN_PASSWORD`
+- `prod` (add required reviewers): `COSIGN_PRIVATE_KEY`, `COSIGN_PASSWORD`,
+  `SECUREBOOT_DB_KEY`, `SECUREBOOT_DB_CERT`
+
+Artifacts:
+
+- Dev: `ghcr.io/stargrid-systems/caustic-os-dev:<version>`
+- Prod: `ghcr.io/stargrid-systems/caustic-os:<version>`
+
 ## Secure Boot
 
 Image builds sign the UKI and systemd-boot when Secure Boot keys are present.
@@ -50,9 +68,6 @@ sbctl enroll-keys --microsoft \
   /usr/share/secureboot/keys/KEK/KEK.crt \
   /usr/share/secureboot/keys/db/db.crt
 ```
-
-Cosign (keyless, via Fulcio) remains the trust mechanism for OTA artifacts in
-the registry. Secure Boot protects the on-device boot chain.
 
 ## License
 

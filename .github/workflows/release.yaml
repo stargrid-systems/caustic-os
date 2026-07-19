@@ -2,40 +2,137 @@ name: Release
 
 on:
   push:
-    tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Version string (e.g. 2026.07.1)
-        required: true
+    branches: [main]
+  pull_request:
+    types: [closed]
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
   packages: write
   id-token: write
 
+concurrency:
+  group: release-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
-  release:
-    name: Build and publish image
-    runs-on: ubuntu-26.04-arm
+  open-pr:
+    name: Open release PR
+    if: |
+      github.event_name == 'push' &&
+      !startsWith(github.event.head_commit.message, 'release:')
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4dddfe3e0  # v7.0.0
         with:
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Resolve version
+      - name: Compute next CalVer version
+        id: calver
+        run: |
+          set -euo pipefail
+          today=$(date -u +'%Y.%m')
+          highest=$(
+            git tag --list "${today}.*" \
+              | sed "s/^${today}\.//" \
+              | sort -n \
+              | tail -1
+          )
+          if [ -z "$highest" ]; then
+            next=1
+          else
+            next=$(( highest + 1 ))
+          fi
+          echo "version=${today}.${next}" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version.txt
+        run: printf '%s\n' '${{ steps.calver.outputs.version }}' > version.txt
+
+      - name: Build changelog
+        id: changelog
+        env:
+          VERSION: ${{ steps.calver.outputs.version }}
+        run: |
+          set -euo pipefail
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$last_tag" ]; then
+            range="${last_tag}..HEAD"
+            since="since ${last_tag}"
+          else
+            range="HEAD"
+            since="since the start of history"
+          fi
+          {
+            echo "body<<EOF"
+            echo "## What's changed ${since}"
+            echo
+            git log "${range}" --pretty=format:'- %s' --no-merges | head -100 || true
+            echo
+            echo
+            echo "Merging this PR cuts release **${VERSION}**."
+            echo "The merge commit is tagged. The dev image builds immediately."
+            echo "The prod image build runs in the \`prod\` environment and waits for approval."
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or update release PR
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676  # v7.0.11
+        with:
+          branch: release-next
+          title: "release: ${{ steps.calver.outputs.version }}"
+          body: ${{ steps.changelog.outputs.body }}
+          labels: release
+          commit-message: "release: bump version.txt to ${{ steps.calver.outputs.version }}"
+
+  tag:
+    name: Tag release
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      contains(github.event.pull_request.labels.*.name, 'release')
+    runs-on: ubuntu-26.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout merge commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
+      - name: Read version
         id: version
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
+          v=$(tr -d '[:space:]' < version.txt)
+          echo "version=${v}" >> "$GITHUB_OUTPUT"
 
-      - name: Write version.txt
-        run: printf '%s' '${{ steps.version.outputs.version }}' > version.txt
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          gh release create "${VERSION}" \
+            --target "${MERGE_SHA}" \
+            --title "${VERSION}" \
+            --notes "Release ${VERSION}. See commit history for details."
+
+  build-dev:
+    name: Build dev image
+    needs: tag
+    runs-on: ubuntu-26.04-arm
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
@@ -43,9 +140,81 @@ jobs:
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d  # v14
 
-      - name: Build update package
+      - name: Build dev update package
         run: |
           nix build \
+            .#nixosConfigurations.devImage.config.system.build.updatePackage \
+            --out-link update \
+            --print-build-logs
+
+      - name: Compose OCI artifact
+        run: |
+          mkdir -p artifact
+          cp update/* artifact/
+          sha256sum artifact/* > artifact/SHA256SUMS
+
+      - name: Install oras
+        uses: oras-project/setup-oras@ca28077386065e263c03428f4ae0c09024817c93  # v1.2.0
+
+      - name: Login to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push OCI artifact
+        env:
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          oras push \
+            ghcr.io/${{ github.repository }}-dev:${VERSION} \
+            --annotation "org.opencontainers.image.version=${VERSION}" \
+            $(find artifact -type f -printf '%p:%f ')
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.8.2
+
+      - name: Sign artifact
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          printf '%s' "$COSIGN_PRIVATE_KEY" > /tmp/cosign.key
+          trap 'rm -f /tmp/cosign.key' EXIT
+          cosign sign --yes --key /tmp/cosign.key \
+            ghcr.io/${{ github.repository }}-dev:${VERSION}
+
+  build-prod:
+    name: Build prod image (promotion)
+    needs: [tag, build-dev]
+    runs-on: ubuntu-26.04-arm
+    environment: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
+      - name: Materialize Secure Boot keys
+        env:
+          DB_KEY: ${{ secrets.SECUREBOOT_DB_KEY }}
+          DB_CERT: ${{ secrets.SECUREBOOT_DB_CERT }}
+        run: |
+          keys_dir="$(mktemp -d)"
+          printf '%s' "$DB_KEY" > "${keys_dir}/db.key"
+          printf '%s' "$DB_CERT" > "${keys_dir}/db.crt"
+          echo "keys_dir=${keys_dir}" >> "$GITHUB_ENV"
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d  # v14
+
+      - name: Build production update package
+        env:
+          CAUSTIC_SECUREBOOT_KEYS: ${{ env.keys_dir }}
+        run: |
+          nix build --impure \
             .#nixosConfigurations.production.config.system.build.updatePackage \
             --out-link update \
             --print-build-logs
@@ -57,22 +226,30 @@ jobs:
           sha256sum artifact/* > artifact/SHA256SUMS
 
       - name: Install oras
-        uses: oras-project/setup-oras@5c0d5ca8ac2821bc95a9896c24d37559baepc6e3  # v1.2.0
+        uses: oras-project/setup-oras@ca28077386065e263c03428f4ae0c09024817c93  # v1.2.0
 
       - name: Login to ghcr.io
         run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
       - name: Push OCI artifact
+        env:
+          VERSION: ${{ needs.tag.outputs.version }}
         run: |
           oras push \
-            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }} \
-            --annotation "org.opencontainers.image.version=${{ steps.version.outputs.version }}" \
+            ghcr.io/${{ github.repository }}:${VERSION} \
+            --annotation "org.opencontainers.image.version=${VERSION}" \
             $(find artifact -type f -printf '%p:%f ')
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.8.2
 
-      - name: Sign artifact keyless
+      - name: Sign artifact
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          VERSION: ${{ needs.tag.outputs.version }}
         run: |
-          cosign sign --yes \
-            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+          printf '%s' "$COSIGN_PRIVATE_KEY" > /tmp/cosign.key
+          trap 'rm -f /tmp/cosign.key' EXIT
+          cosign sign --yes --key /tmp/cosign.key \
+            ghcr.io/${{ github.repository }}:${VERSION}

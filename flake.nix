@@ -154,29 +154,18 @@
           ];
         };
 
-      securebootKeys =
-        let
-          keysEnvPath = builtins.getEnv "CAUSTIC_SECUREBOOT_KEYS";
-          keysDir = if keysEnvPath != "" then keysEnvPath else "/usr/share/secureboot/keys/db";
-          keyPath = "${keysDir}/db.key";
-          certPath = "${keysDir}/db.crt";
-        in
-        # In pure eval, getEnv returns "" and the fallback path won't exist,
-        # so this resolves to null. Use --impure with the env var (or rely on
-        # the sbctl default location) to enable signing.
-        if builtins.pathExists keyPath && builtins.pathExists certPath then
-          {
-            key = keyPath;
-            cert = certPath;
-          }
-        else
-          null;
-
       prodNixosFor =
         system:
+        {
+          securebootKeys ? securebootKeysGlobal,
+          imageId ? "caustic-os",
+          otaRegistry ? "ghcr.io/stargrid-systems/caustic-os",
+        }:
         nixpkgs.lib.nixosSystem {
           inherit system;
-          specialArgs = { inherit securebootKeys; };
+          specialArgs = {
+            inherit securebootKeys imageId otaRegistry;
+          };
           modules = [
             ({ modulesPath, ... }: {
               imports = [
@@ -197,6 +186,24 @@
             ./systems/production/updates.nix
           ];
         };
+
+      securebootKeysGlobal =
+        let
+          keysEnvPath = builtins.getEnv "CAUSTIC_SECUREBOOT_KEYS";
+          keysDir = if keysEnvPath != "" then keysEnvPath else "/usr/share/secureboot/keys/db";
+          keyPath = "${keysDir}/db.key";
+          certPath = "${keysDir}/db.crt";
+        in
+        # In pure eval, getEnv returns "" and the fallback path won't exist,
+        # so this resolves to null. Use --impure with the env var (or rely on
+        # the sbctl default location) to enable signing.
+        if builtins.pathExists keyPath && builtins.pathExists certPath then
+          {
+            key = keyPath;
+            cert = certPath;
+          }
+        else
+          null;
     in
     {
       overlays.default = apertureOverlay;
@@ -212,7 +219,12 @@
 
       nixosConfigurations = {
         dev = devNixosFor "x86_64-linux";
-        production = prodNixosFor "aarch64-linux";
+        production = prodNixosFor "aarch64-linux" { };
+        devImage = prodNixosFor "aarch64-linux" {
+          securebootKeys = null;
+          imageId = "caustic-os-dev";
+          otaRegistry = "ghcr.io/stargrid-systems/caustic-os-dev";
+        };
       };
 
       packages = perSystem (
@@ -227,6 +239,7 @@
         }
         // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
           productionImage = self.nixosConfigurations.production.config.system.build.image;
+          devImage = self.nixosConfigurations.devImage.config.system.build.image;
         }
       );
 
