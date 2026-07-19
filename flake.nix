@@ -154,10 +154,29 @@
           ];
         };
 
+      securebootKeys =
+        let
+          keysEnvPath = builtins.getEnv "CAUSTIC_SECUREBOOT_KEYS";
+          keysDir = if keysEnvPath != "" then keysEnvPath else "/usr/share/secureboot/keys/db";
+          keyPath = "${keysDir}/db.key";
+          certPath = "${keysDir}/db.crt";
+        in
+        # In pure eval, getEnv returns "" and the fallback path won't exist,
+        # so this resolves to null. Use --impure with the env var (or rely on
+        # the sbctl default location) to enable signing.
+        if builtins.pathExists keyPath && builtins.pathExists certPath then
+          {
+            key = keyPath;
+            cert = certPath;
+          }
+        else
+          null;
+
       prodNixosFor =
         system:
         nixpkgs.lib.nixosSystem {
           inherit system;
+          specialArgs = { inherit securebootKeys; };
           modules = [
             ({ modulesPath, ... }: {
               imports = [
@@ -243,6 +262,8 @@
               pkgs.nil
               pkgs.statix
               pkgs.deadnix
+              pkgs.sbctl
+              pkgs.sbsigntool
               treefmt
             ];
             inherit (preCommitHooksFor system) shellHook;

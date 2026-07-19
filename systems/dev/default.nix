@@ -1,4 +1,4 @@
-# Dev VM config (x86_64-linux). Insecure by design: root SSH with password.
+# Dev VM config (x86_64-linux). Insecure by design: open access, no auth anywhere.
 {
   lib,
   pkgs,
@@ -9,6 +9,8 @@
   imports = [ "${modulesPath}/virtualisation/qemu-vm.nix" ];
 
   system.stateVersion = "26.05";
+
+  boot.initrd.systemd.emergencyAccess = "";
 
   services = {
     aperture.enable = true;
@@ -26,12 +28,13 @@
       enable = true;
       allowPasswordAuth = true;
       allowRootLogin = true;
+      allowEmptyPasswords = true;
     };
 
     getty.autologinUser = lib.mkDefault "root";
   };
 
-  users.users.root.password = "caustic";
+  users.users.root.password = lib.mkForce null;
 
   networking = {
     enableIPv6 = lib.mkDefault true;

@@ -21,6 +21,7 @@ let
   ]
   ++ lib.optional (!cfg.allowPasswordAuth) "-s"
   ++ lib.optional (!cfg.allowRootLogin) "-w"
+  ++ lib.optional cfg.allowEmptyPasswords "-B"
   ++ builtins.concatMap (k: [
     "-r"
     k
@@ -48,6 +49,12 @@ in
       type = lib.types.bool;
       default = false;
       description = "Allow root login. Defaults to false.";
+    };
+
+    allowEmptyPasswords = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Allow logins with empty passwords (-B).";
     };
   };
 

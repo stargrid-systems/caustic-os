@@ -2,6 +2,7 @@
   lib,
   config,
   pkgs,
+  securebootKeys ? null,
   ...
 }:
 let
@@ -26,7 +27,22 @@ let
     device_tree_end=0x400000
   '';
 
-  systemdBoot = "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${pkgs.stdenv.hostPlatform.efiArch}.efi";
+  unsignedSystemdBoot = "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${pkgs.stdenv.hostPlatform.efiArch}.efi";
+  systemdBoot =
+    if securebootKeys != null then
+      pkgs.runCommand "systemd-boot-signed.efi"
+        {
+          nativeBuildInputs = [ pkgs.sbsigntool ];
+        }
+        ''
+          sbsign \
+            --key ${securebootKeys.key} \
+            --cert ${securebootKeys.cert} \
+            --output $out \
+            ${unsignedSystemdBoot}
+        ''
+    else
+      unsignedSystemdBoot;
   bootEfiName = "BOOT${lib.toUpper pkgs.stdenv.hostPlatform.efiArch}.EFI";
   systemdEfiName = "systemd-boot${pkgs.stdenv.hostPlatform.efiArch}.efi";
 
