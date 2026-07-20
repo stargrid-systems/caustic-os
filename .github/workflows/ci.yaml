@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  actions: write
 
 jobs:
   quick-checks:
