@@ -173,7 +173,8 @@ jobs:
       - name: Compose OCI artifact
         run: |
           mkdir -p artifact
-          cp update/* artifact/
+          cp -L update/* artifact/
+          rm -f artifact/SHA256SUMS
           sha256sum artifact/* > artifact/SHA256SUMS
 
       - name: Install oras
@@ -251,7 +252,8 @@ jobs:
       - name: Compose OCI artifact
         run: |
           mkdir -p artifact
-          cp update/* artifact/
+          cp -L update/* artifact/
+          rm -f artifact/SHA256SUMS
           sha256sum artifact/* > artifact/SHA256SUMS
 
       - name: Install oras
