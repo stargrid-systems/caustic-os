@@ -21,11 +21,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+      - name: Install Determinate Nix
+        uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
 
-      - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d  # v14
+      - name: FlakeHub Cache
+        uses: DeterminateSystems/flakehub-cache-action@3be0931021788e3bb4df65f59a555039c2fa2d46  # v3.21.7
 
       - name: nix flake check
         run: nix flake check --print-build-logs
@@ -40,11 +40,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+      - name: Install Determinate Nix
+        uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
 
-      - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d  # v14
+      - name: FlakeHub Cache
+        uses: DeterminateSystems/flakehub-cache-action@3be0931021788e3bb4df65f59a555039c2fa2d46  # v3.21.7
 
       # Validates that the flake evaluates cleanly for the target architecture.
       # Real image outputs land in later phases:
