@@ -36,12 +36,27 @@ jobs:
         run: |
           set -euo pipefail
           today=$(date -u +'%Y.%m')
-          highest=$(
+
+          from_tags=$(
             git tag --list "${today}.*" \
               | sed "s/^${today}\.//" \
               | sort -n \
               | tail -1
           )
+
+          from_file=""
+          if [ -f version.txt ]; then
+            current=$(tr -d '[:space:]' < version.txt)
+            from_file=$(printf '%s\n' "$current" | sed -n "s/^${today}\.\([0-9]\+\)$/\1/p")
+          fi
+
+          highest=$(
+            printf '%s\n%s\n' "${from_tags:-}" "${from_file:-}" \
+              | grep -E '^[0-9]+$' \
+              | sort -n \
+              | tail -1
+          )
+
           if [ -z "$highest" ]; then
             next=1
           else
