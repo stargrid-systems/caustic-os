@@ -197,10 +197,18 @@
         # In pure eval, getEnv returns "" and the fallback path won't exist,
         # so this resolves to null. Use --impure with the env var (or rely on
         # the sbctl default location) to enable signing.
-        if builtins.pathExists keyPath && builtins.pathExists certPath then
+        # builtins.path copies the key files into the nix store so that
+        # sandboxed derivations (sbsign, ukify) can read them.
+        if keysEnvPath != "" && builtins.pathExists keyPath && builtins.pathExists certPath then
           {
-            key = keyPath;
-            cert = certPath;
+            key = builtins.path {
+              path = keyPath;
+              name = "secureboot-db.key";
+            };
+            cert = builtins.path {
+              path = certPath;
+              name = "secureboot-db.crt";
+            };
           }
         else
           null;
