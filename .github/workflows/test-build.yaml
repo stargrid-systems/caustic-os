@@ -1,0 +1,39 @@
+name: Test build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  actions: write
+
+jobs:
+  build-dev-image:
+    name: Build dev image
+    runs-on: ubuntu-26.04-arm
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Enable unprivileged user namespaces
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
+          cat /proc/sys/user/max_user_namespaces || true
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d  # v14
+
+      - name: Build dev update package
+        run: |
+          nix build \
+            .#nixosConfigurations.devImage.config.system.build.updatePackage \
+            --out-link update \
+            --print-build-logs
