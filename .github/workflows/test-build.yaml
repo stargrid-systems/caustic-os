@@ -2,6 +2,18 @@ name: Test build
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Nix installable to build
+        required: true
+        default: .#nixosConfigurations.devImage.config.system.build.updatePackage
+        type: choice
+        options:
+          - .#packages.aarch64-linux.caustic-ota
+          - .#packages.aarch64-linux.aperture
+          - .#nixosConfigurations.devImage.config.boot.kernelPackages.kernel
+          - .#nixosConfigurations.devImage.config.system.build.toplevel
+          - .#nixosConfigurations.devImage.config.system.build.updatePackage
 
 permissions:
   contents: read
@@ -13,8 +25,8 @@ env:
   NIX_CACHE_PUBLIC_KEY: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
 
 jobs:
-  build-dev-image:
-    name: Build dev image
+  build:
+    name: Build ${{ inputs.target }}
     runs-on: ubuntu-26.04-arm
     environment: dev
     env:
@@ -36,12 +48,12 @@ jobs:
       - name: Setup Nix with S3 cache
         uses: ./.github/actions/setup-nix-cache
 
-      - name: Build dev update package
+      - name: Build
         run: |
           nix build \
             --keep-going \
-            .#nixosConfigurations.devImage.config.system.build.updatePackage \
-            --out-link update \
+            ${{ inputs.target }} \
+            --out-link result \
             --print-build-logs
 
       - name: Upload to S3 cache
@@ -50,5 +62,4 @@ jobs:
         env:
           NIX_CACHE_URL: s3://${{ vars.NIX_CACHE_BUCKET }}?endpoint=${{ vars.NIX_CACHE_ENDPOINT }}&scheme=https&region=${{ vars.NIX_CACHE_REGION }}
         run: |
-          nix copy --to "$NIX_CACHE_URL" \
-            .#nixosConfigurations.devImage.config.system.build.updatePackage
+          nix copy --to "$NIX_CACHE_URL" "${{ inputs.target }}"
