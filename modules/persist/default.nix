@@ -20,6 +20,7 @@ in
       directories = [
         "/var/lib/aperture"
         "/var/lib/dropbear"
+        "/var/lib/nixos"
         "/var/log/journal"
         "/nix/var/nix"
       ];
