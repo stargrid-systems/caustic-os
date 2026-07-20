@@ -11,6 +11,7 @@ permissions:
   pull-requests: write
   packages: write
   id-token: write
+  actions: write
 
 concurrency:
   group: release-${{ github.event_name }}
