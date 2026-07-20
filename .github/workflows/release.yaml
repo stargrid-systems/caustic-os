@@ -10,8 +10,12 @@ permissions:
   contents: write
   pull-requests: write
   packages: write
-  id-token: write
-  actions: write
+
+env:
+  NIX_CACHE_BUCKET: ${{ vars.NIX_CACHE_BUCKET }}
+  NIX_CACHE_ENDPOINT: ${{ vars.NIX_CACHE_ENDPOINT }}
+  NIX_CACHE_REGION: ${{ vars.NIX_CACHE_REGION }}
+  NIX_CACHE_PUBLIC_KEY: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
 
 concurrency:
   group: release-${{ github.event_name }}
@@ -144,6 +148,10 @@ jobs:
     needs: tag
     runs-on: ubuntu-26.04-arm
     environment: dev
+    env:
+      NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -157,18 +165,25 @@ jobs:
           cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
           cat /proc/sys/user/max_user_namespaces || true
 
-      - name: Install Determinate Nix
-        uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
-
-      - name: FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@3be0931021788e3bb4df65f59a555039c2fa2d46  # v3.21.7
+      - name: Setup Nix with S3 cache
+        uses: ./.github/actions/setup-nix-cache
 
       - name: Build dev update package
         run: |
           nix build \
+            --keep-going \
             .#nixosConfigurations.devImage.config.system.build.updatePackage \
             --out-link update \
             --print-build-logs
+
+      - name: Upload to S3 cache
+        if: always()
+        continue-on-error: true
+        env:
+          NIX_CACHE_URL: s3://${{ vars.NIX_CACHE_BUCKET }}?endpoint=${{ vars.NIX_CACHE_ENDPOINT }}&scheme=https&region=${{ vars.NIX_CACHE_REGION }}
+        run: |
+          nix copy --to "$NIX_CACHE_URL" \
+            .#nixosConfigurations.devImage.config.system.build.updatePackage
 
       - name: Compose OCI artifact
         run: |
@@ -211,6 +226,10 @@ jobs:
     needs: [tag, build-dev]
     runs-on: ubuntu-26.04-arm
     environment: prod
+    env:
+      NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -234,20 +253,26 @@ jobs:
           printf '%s' "$DB_CERT" > "${keys_dir}/db.crt"
           echo "keys_dir=${keys_dir}" >> "$GITHUB_ENV"
 
-      - name: Install Determinate Nix
-        uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
-
-      - name: FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@3be0931021788e3bb4df65f59a555039c2fa2d46  # v3.21.7
+      - name: Setup Nix with S3 cache
+        uses: ./.github/actions/setup-nix-cache
 
       - name: Build production update package
         env:
           CAUSTIC_SECUREBOOT_KEYS: ${{ env.keys_dir }}
         run: |
-          nix build --impure \
+          nix build --impure --keep-going \
             .#nixosConfigurations.production.config.system.build.updatePackage \
             --out-link update \
             --print-build-logs
+
+      - name: Upload to S3 cache
+        if: always()
+        continue-on-error: true
+        env:
+          NIX_CACHE_URL: s3://${{ vars.NIX_CACHE_BUCKET }}?endpoint=${{ vars.NIX_CACHE_ENDPOINT }}&scheme=https&region=${{ vars.NIX_CACHE_REGION }}
+        run: |
+          nix copy --to "$NIX_CACHE_URL" \
+            .#nixosConfigurations.production.config.system.build.updatePackage
 
       - name: Compose OCI artifact
         run: |

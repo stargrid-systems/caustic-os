@@ -1,0 +1,28 @@
+name: Setup Nix with S3 cache
+
+inputs:
+  signing-key-file:
+    description: Path to write the nix cache signing key
+    required: false
+    default: /tmp/nix-cache.sec
+
+runs:
+  using: composite
+  steps:
+    - name: Write nix cache signing key
+      shell: bash
+      env:
+        NIX_CACHE_PRIVATE_KEY: ${{ env.NIX_CACHE_PRIVATE_KEY }}
+      run: |
+        printf '%s\n' "$NIX_CACHE_PRIVATE_KEY" > "${{ inputs.signing-key-file }}"
+        chmod 600 "${{ inputs.signing-key-file }}"
+
+    - name: Install Determinate Nix
+      uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
+      env:
+        NIX_CACHE_SUBSTITUTER: s3://${{ env.NIX_CACHE_BUCKET }}?endpoint=${{ env.NIX_CACHE_ENDPOINT }}&scheme=https&region=${{ env.NIX_CACHE_REGION }}
+      with:
+        extra-conf: |
+          extra-substituters = ${{ env.NIX_CACHE_SUBSTITUTER }}
+          extra-trusted-public-keys = ${{ env.NIX_CACHE_PUBLIC_KEY }}
+          secret-key-files = ${{ inputs.signing-key-file }}
