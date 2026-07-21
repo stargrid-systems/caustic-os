@@ -62,4 +62,6 @@ jobs:
         env:
           NIX_CACHE_URL: s3://${{ vars.NIX_CACHE_BUCKET }}?endpoint=${{ vars.NIX_CACHE_ENDPOINT }}&scheme=https&region=${{ vars.NIX_CACHE_REGION }}
         run: |
-          nix copy --to "$NIX_CACHE_URL" "${{ inputs.target }}"
+          # Upload everything in the local store (build outputs + build-time deps).
+          # The runner is ephemeral so the store only contains what this build needed.
+          nix copy --to "$NIX_CACHE_URL" --all
