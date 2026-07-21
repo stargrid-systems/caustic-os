@@ -17,6 +17,32 @@ runs:
         printf '%s\n' "$NIX_CACHE_PRIVATE_KEY" > "${{ inputs.signing-key-file }}"
         chmod 600 "${{ inputs.signing-key-file }}"
 
+    - name: Write AWS credentials for nix daemon
+      shell: bash
+      env:
+        AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
+        NIX_CACHE_REGION: ${{ env.NIX_CACHE_REGION }}
+      run: |
+        # The nix daemon reads from S3 as a substituter. Env vars set on the
+        # client don't propagate to the daemon process, so write a credentials
+        # file the AWS SDK will pick up.
+        if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+          echo "AWS credentials missing; skipping credentials file"
+          exit 0
+        fi
+        sudo mkdir -p /root/.aws
+        sudo tee /root/.aws/credentials > /dev/null <<EOF
+        [default]
+        aws_access_key_id = ${AWS_ACCESS_KEY_ID}
+        aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
+        EOF
+        sudo chmod 600 /root/.aws/credentials
+        sudo tee /root/.aws/config > /dev/null <<EOF
+        [default]
+        region = ${NIX_CACHE_REGION}
+        EOF
+
     - name: Install Determinate Nix
       uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
       env:
@@ -26,3 +52,20 @@ runs:
           extra-substituters = ${{ env.NIX_CACHE_SUBSTITUTER }}
           extra-trusted-public-keys = ${{ env.NIX_CACHE_PUBLIC_KEY }}
           secret-key-files = ${{ inputs.signing-key-file }}
+
+    - name: Restart nix daemon with AWS environment
+      shell: bash
+      run: |
+        # Make sure the daemon has HOME=/root so the AWS SDK reads /root/.aws/credentials.
+        sudo systemctl stop nix-daemon 2>/dev/null || true
+        sudo mkdir -p /etc/systemd/system/nix-daemon.service.d
+        sudo tee /etc/systemd/system/nix-daemon.service.d/override.conf > /dev/null <<EOF
+        [Service]
+        Environment=HOME=/root
+        Environment=AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials
+        Environment=AWS_CONFIG_FILE=/root/.aws/config
+        Environment=AWS_DEFAULT_REGION=${{ env.NIX_CACHE_REGION }}
+        Environment=AWS_REGION=${{ env.NIX_CACHE_REGION }}
+        EOF
+        sudo systemctl daemon-reload
+        sudo systemctl start nix-daemon
