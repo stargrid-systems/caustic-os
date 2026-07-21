@@ -1,7 +1,6 @@
 {
   lib,
   pkgs,
-  config,
   securebootKeys ? null,
   imageId ? "caustic-os",
   otaRegistry ? "ghcr.io/stargrid-systems/caustic-os",
@@ -53,23 +52,6 @@ in
         SecureBootPrivateKey = securebootKeys.key;
       };
     };
-
-    # nixpkgs' system.build.uki doesn't pull sbsigntool into the builder's PATH.
-    # ukify doesn't look up sbsign/sbverify via PATH; it has a --toolsdir flag
-    # that must point at a directory containing both. Without it, ukify errors
-    # out with "Tool sbverify not installed!" when SecureBootPrivateKey is set.
-    system.build.uki =
-      pkgs.runCommand config.system.boot.loader.ukiFile
-        {
-          nativeBuildInputs = [ pkgs.sbsigntool ];
-        }
-        ''
-          mkdir -p $out
-          ${pkgs.buildPackages.systemdUkify}/lib/systemd/ukify build \
-            --config=${config.boot.uki.configFile} \
-            --toolsdir=${lib.getBin pkgs.sbsigntool}/bin \
-            --output="$out/${config.system.boot.loader.ukiFile}"
-        '';
 
     hardware.deviceTree.enable = true;
 

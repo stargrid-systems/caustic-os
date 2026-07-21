@@ -18,21 +18,11 @@ on:
 permissions:
   contents: read
 
-env:
-  NIX_CACHE_BUCKET: ${{ vars.NIX_CACHE_BUCKET }}
-  NIX_CACHE_ENDPOINT: ${{ vars.NIX_CACHE_ENDPOINT }}
-  NIX_CACHE_REGION: ${{ vars.NIX_CACHE_REGION }}
-  NIX_CACHE_PUBLIC_KEY: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-
 jobs:
   build:
     name: Build ${{ inputs.target }}
     runs-on: ubuntu-26.04-arm
     environment: dev
-    env:
-      NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -42,11 +32,33 @@ jobs:
       - name: Enable unprivileged user namespaces
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
-          cat /proc/sys/user/max_user_namespaces || true
 
-      - name: Setup Nix with S3 cache
-        uses: ./.github/actions/setup-nix-cache
+      - name: Install Determinate Nix
+        uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
+
+      - name: Setup Nix S3 cache
+        uses: lemmih/nix-s3-cache-action@b0ad3ac7509d39827fa685f2ba598114e792c07b
+        with:
+          s3-endpoint: ${{ vars.NIX_CACHE_ENDPOINT }}
+          bucket: ${{ vars.NIX_CACHE_BUCKET }}
+          region: ${{ vars.NIX_CACHE_REGION }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          private-key: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Ensure daemon can read S3 credentials
+        run: |
+          sudo systemctl stop nix-daemon
+          sudo mkdir -p /etc/systemd/system/nix-daemon.service.d
+          sudo tee /etc/systemd/system/nix-daemon.service.d/override.conf > /dev/null <<'EOF'
+          [Service]
+          Environment=HOME=/root
+          Environment=AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials
+          Environment=AWS_CONFIG_FILE=/root/.aws/config
+          EOF
+          sudo systemctl daemon-reload
+          sudo systemctl start nix-daemon
 
       - name: Build
         run: |
@@ -55,13 +67,3 @@ jobs:
             ${{ inputs.target }} \
             --out-link result \
             --print-build-logs
-
-      - name: Upload to S3 cache
-        if: always()
-        continue-on-error: true
-        env:
-          NIX_CACHE_URL: s3://${{ vars.NIX_CACHE_BUCKET }}?endpoint=${{ vars.NIX_CACHE_ENDPOINT }}&scheme=https&region=${{ vars.NIX_CACHE_REGION }}
-        run: |
-          # Upload everything in the local store (build outputs + build-time deps).
-          # The runner is ephemeral so the store only contains what this build needed.
-          nix copy --to "$NIX_CACHE_URL" $(nix path-info --all)

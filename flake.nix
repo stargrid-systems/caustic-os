@@ -136,9 +136,18 @@
           };
         });
 
-      osOverlay = final: _prev: {
+      osOverlay = final: prev: {
         aperture = apertureFor final.stdenv.hostPlatform.system;
         caustic-ota = causticOtaFor final.stdenv.hostPlatform.system;
+
+        # nixpkgs wraps ukify with binutils in PATH but not sbsigntool.
+        # ukify needs sbsign/sbverify when SecureBootPrivateKey is set, and
+        # its wrapper overrides PATH, so nativeBuildInputs in callers don't help.
+        systemdUkify = prev.systemdUkify.overrideAttrs (old: {
+          postFixup = (old.postFixup or "") + ''
+            wrapProgram $out/bin/ukify --prefix PATH : ${lib.makeBinPath [ final.sbsigntool ]}
+          '';
+        });
       };
       apertureOverlay = osOverlay;
 

@@ -1,3 +1,4 @@
 /result*
 /secrets
 target/
+formatter-result
