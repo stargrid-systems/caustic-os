@@ -54,11 +54,11 @@ in
       };
     };
 
-    # nixpkgs' system.build.uki doesn't pull sbsigntool into the builder's PATH.
-    # ukify doesn't look up sbsign/sbverify via PATH; it has a --toolsdir flag
-    # that must point at a directory containing both. Without it, ukify errors
-    # out with "Tool sbverify not installed!" when SecureBootPrivateKey is set.
-    system.build.uki =
+    # nixpkgs' system.build.uki runs ukify without sbsigntool in scope. ukify
+    # needs to find sbsign/sbverify to honour SecureBootPrivateKey; the --tools
+    # flag tells it where to look. mkForce is required because the upstream
+    # module also assigns system.build.uki with a plain =.
+    system.build.uki = lib.mkForce (
       pkgs.runCommand config.system.boot.loader.ukiFile
         {
           nativeBuildInputs = [ pkgs.sbsigntool ];
@@ -67,9 +67,10 @@ in
           mkdir -p $out
           ${pkgs.buildPackages.systemdUkify}/lib/systemd/ukify build \
             --config=${config.boot.uki.configFile} \
-            --toolsdir=${lib.getBin pkgs.sbsigntool}/bin \
+            --tools=${lib.getBin pkgs.sbsigntool}/bin \
             --output="$out/${config.system.boot.loader.ukiFile}"
-        '';
+        ''
+    );
 
     hardware.deviceTree.enable = true;
 
