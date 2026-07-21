@@ -1,6 +1,7 @@
 {
   lib,
   pkgs,
+  config,
   securebootKeys ? null,
   imageId ? "caustic-os",
   otaRegistry ? "ghcr.io/stargrid-systems/caustic-os",
@@ -52,6 +53,21 @@ in
         SecureBootPrivateKey = securebootKeys.key;
       };
     };
+
+    # nixpkgs' system.build.uki doesn't pull sbsigntool into the builder's PATH,
+    # which breaks ukify when SecureBootPrivateKey is set (it calls sbverify to
+    # check whether the kernel is already signed). Add it here.
+    system.build.uki =
+      pkgs.runCommand config.system.boot.loader.ukiFile
+        {
+          nativeBuildInputs = [ pkgs.sbsigntool ];
+        }
+        ''
+          mkdir -p $out
+          ${pkgs.buildPackages.systemdUkify}/lib/systemd/ukify build \
+            --config=${config.boot.uki.configFile} \
+            --output="$out/${config.system.boot.loader.ukiFile}"
+        '';
 
     hardware.deviceTree.enable = true;
 
