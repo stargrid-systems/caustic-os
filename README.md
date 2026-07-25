@@ -22,10 +22,28 @@ Required GitHub environments and secrets:
 - `prod` (add required reviewers): `COSIGN_PRIVATE_KEY`, `COSIGN_PASSWORD`,
   `SECUREBOOT_DB_KEY`, `SECUREBOOT_DB_CERT`
 
+Repository-level secrets and variables used by every CI job:
+
+- secret `NIX_CACHE_PRIVATE_KEY` — private signing key for the nix binary
+  cache.
+- variable `NIX_CACHE_PUBLIC_KEY` — matching public key, also used to
+  configure the substituter in CI.
+- The `AWS_*` secrets and the remaining `NIX_CACHE_*` variables left over
+  from the previous Hetzner S3 cache are unused and can be removed.
+
 Artifacts:
 
 - Dev: `ghcr.io/stargrid-systems/caustic-os-dev:<version>`
 - Prod: `ghcr.io/stargrid-systems/caustic-os:<version>`
+
+## Binary cache
+
+Build outputs are cached on ghcr.io as OCI blobs via the vendored
+`nixcache-oci` library inside `.github/actions/setup-nix-cache/`. The
+composite action starts a local proxy that bridges the nix binary cache
+protocol to ghcr.io, so CI runs reuse previously built paths instead of
+rebuilding them. A weekly `Garbage collect OCI cache` workflow drops
+entries that are no longer reachable from a current release closure.
 
 ## Secure Boot
 
