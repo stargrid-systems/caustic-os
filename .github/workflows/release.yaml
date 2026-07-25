@@ -183,7 +183,8 @@ jobs:
             exit 0
           fi
           export_paths_directly "${upload_array[@]}"
-          upload_to_oci "${paths[@]}"
+          top_level=$(nix path-info update)
+          upload_to_oci "$top_level"
 
       - name: Compose OCI artifact
         run: |
@@ -278,7 +279,8 @@ jobs:
             exit 0
           fi
           export_paths_directly "${upload_array[@]}"
-          upload_to_oci "${paths[@]}"
+          top_level=$(nix path-info update)
+          upload_to_oci "$top_level"
 
       - name: Compose OCI artifact
         run: |

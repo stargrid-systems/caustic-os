@@ -30,6 +30,10 @@ runs:
       env:
         NIX_CACHE_PRIVATE_KEY: ${{ env.NIX_CACHE_PRIVATE_KEY }}
       run: |
+        if [[ -z "$NIX_CACHE_PRIVATE_KEY" ]]; then
+          echo "::notice::NIX_CACHE_PRIVATE_KEY is not set; cache uploads will be unsigned"
+          exit 0
+        fi
         printf '%s\n' "$NIX_CACHE_PRIVATE_KEY" > /tmp/nix-cache.sec
         chmod 600 /tmp/nix-cache.sec
         echo "NIXCACHE_SIGNING_KEY_FILE=/tmp/nix-cache.sec" >> "$GITHUB_ENV"

@@ -85,4 +85,5 @@ jobs:
             exit 0
           fi
           export_paths_directly "${upload_array[@]}"
-          upload_to_oci "${paths[@]}"
+          top_level=$(nix path-info result)
+          upload_to_oci "$top_level"
