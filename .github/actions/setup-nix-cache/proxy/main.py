@@ -228,7 +228,7 @@ def get_nci_response() -> bytes:
 
 class CacheHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        sys.stderr.write(f"[nixcache-proxy] {args[0]}\n")
+        sys.stderr.write(f"[nixcache-proxy] {format % args}\n")
 
     def do_GET(self):
         path = self.path.rstrip("/")

@@ -12,10 +12,10 @@ description: |
                            upload step later in the job.
 
   Required inputs:
-    public-key             matching public key, normally passed as
-                           `${{ vars.NIX_CACHE_PUBLIC_KEY }}` from the
-                           calling workflow (composite actions cannot
-                           read the `vars` context directly).
+    public-key             matching public key, normally passed from
+                           the calling workflow's vars.NIX_CACHE_PUBLIC_KEY
+                           (composite actions cannot read the vars context
+                           directly).
 
 inputs:
   public-key:
