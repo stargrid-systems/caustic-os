@@ -204,10 +204,11 @@ class CacheIndex:
     def find_nar_digest(self, nar_basename: str) -> str | None:
         """Find the OCI blob digest for a NAR file by searching narinfo URL fields."""
         index = self.get()
+        target = f"nar/{nar_basename}"
         for _hash, entry in index.get("entries", {}).items():
             narinfo = entry.get("narinfo", "")
             for line in narinfo.split("\n"):
-                if line.startswith("URL: ") and nar_basename in line:
+                if line.startswith("URL: ") and line[5:].strip() == target:
                     return entry.get("nar_digest")
         return None
 

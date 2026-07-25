@@ -650,24 +650,38 @@ find_locally_built_paths() {
     fi
     info "GHCR index contains $own_count previously-cached entries"
 
+    # Build a set for O(1) lookups.
+    declare -A own_set=()
+    if [[ -n "$own_hashes" ]]; then
+        while IFS= read -r oh; do
+            [[ -n "$oh" ]] && own_set["$oh"]=1
+        done <<< "$own_hashes"
+    fi
+
     # Walk the closure once. `nix path-info --json --recursive` returns
     # either a list (newer Nix) or a path-keyed object (older Nix); the
     # jq normalization handles both.
-    nix path-info --json --recursive "${paths[@]}" 2>/dev/null | \
+    local unsigned
+    unsigned=$(nix path-info --json --recursive "${paths[@]}" 2>/dev/null | \
         jq -r '
             (if type == "array" then .
              else (to_entries | map({path: .key} + .value))
              end) |
             .[] | select((.signatures // []) | length == 0) | .path
-        ' | while IFS= read -r path; do
-            [[ -n "$path" ]] || continue
-            local h
-            h=$(basename "$path" | cut -c1-32)
-            if [[ -n "$own_hashes" ]] && echo "$own_hashes" | grep -qxF "$h"; then
-                continue
-            fi
-            echo "$path"
-        done | sort -u
+        ')
+
+    local result=()
+    while IFS= read -r path; do
+        [[ -n "$path" ]] || continue
+        local h
+        h=$(basename "$path" | cut -c1-32)
+        [[ -n "${own_set[$h]+x}" ]] && continue
+        result+=("$path")
+    done <<< "$unsigned"
+
+    if [[ ${#result[@]} -gt 0 ]]; then
+        printf '%s\n' "${result[@]}" | sort -u
+    fi
 }
 
 stop_self_substituter() {
