@@ -547,7 +547,7 @@ PYEOF
         }')
 
     oci_push_manifest "cache-index" "$manifest"
-    info "Cache index updated ($(echo "$new_entries" | jq 'length') new entries)"
+    info "Cache index pushed to GHCR"
 }
 
 # ── Main pipeline ─────────────────────────────────────────────────────

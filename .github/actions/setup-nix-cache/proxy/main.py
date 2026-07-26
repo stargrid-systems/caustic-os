@@ -238,6 +238,14 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
         sys.stderr.write(f"[nixcache-proxy] {format % args}\n")
 
     def do_GET(self):
+        self.head_only = False
+        self._route()
+
+    def do_HEAD(self):
+        self.head_only = True
+        self._route()
+
+    def _route(self):
         path = self.path.rstrip("/")
         if path == "/nix-cache-info":
             self._serve_bytes(get_nci_response(), "text/x-nix-cache-info")
@@ -264,7 +272,8 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        self.wfile.write(data)
+        if not getattr(self, "head_only", False):
+            self.wfile.write(data)
 
     def _stream_response(self, resp, content_length: int | None, content_type: str):
         """Stream an upstream response directly to the client."""
@@ -273,6 +282,9 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
         if content_length is not None:
             self.send_header("Content-Length", str(content_length))
         self.end_headers()
+        if getattr(self, "head_only", False):
+            resp.close()
+            return
         while True:
             chunk = resp.read(STREAM_CHUNK_SIZE)
             if not chunk:
