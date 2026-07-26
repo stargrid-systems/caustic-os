@@ -209,7 +209,7 @@ jobs:
             $(find artifact -type f -printf '%p:%f ')
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3.8.2
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
 
       - name: Sign artifact
         env:
@@ -305,7 +305,7 @@ jobs:
             $(find artifact -type f -printf '%p:%f ')
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3.8.2
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
 
       - name: Sign artifact
         env:
