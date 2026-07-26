@@ -6,9 +6,10 @@ on:
       target:
         description: Nix installable to build
         required: true
-        default: .#nixosConfigurations.devImage.config.system.build.updatePackage
+        default: .#packages.aarch64-linux.cache-test
         type: choice
         options:
+          - .#packages.aarch64-linux.cache-test
           - .#packages.aarch64-linux.caustic-ota
           - .#packages.aarch64-linux.aperture
           - .#nixosConfigurations.devImage.config.boot.kernelPackages.kernel

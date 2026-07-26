@@ -250,6 +250,11 @@
           aperture = apertureFor system;
           caustic-ota = causticOtaFor system;
           default = apertureFor system;
+          cache-test = (pkgsFor system).runCommand "cache-test" { } ''
+            mkdir -p $out/bin
+            printf '#!/bin/sh\necho caustic-os-cache-ok\n' > $out/bin/cache-test
+            chmod +x $out/bin/cache-test
+          '';
         }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
           devVm = self.nixosConfigurations.dev.config.system.build.vm;
