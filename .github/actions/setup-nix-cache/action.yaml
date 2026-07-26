@@ -66,7 +66,7 @@ runs:
         cat /tmp/nixcache-proxy.log || true
 
     - name: Install Determinate Nix
-      uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
+      uses: DeterminateSystems/determinate-nix-action@d96678350ffd6a456235832eb11e1c491589b7bb  # v3.21.8
       with:
         extra-conf: |
           ${{ steps.proxy.outputs.proxy-ready == 'true' && 'extra-substituters = http://127.0.0.1:37515' || '' }}
