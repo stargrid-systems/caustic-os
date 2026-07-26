@@ -1,0 +1,129 @@
+name: Garbage collect OCI cache
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # weekly, Sunday 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      retention_days:
+        description: Delete entries older than N days not in a current release closure
+        required: false
+        default: '30'
+        type: string
+      dry_run:
+        description: Report what would be deleted without deleting
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  gc:
+    name: Prune stale cache entries
+    runs-on: ubuntu-26.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Enable unprivileged user namespaces
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: Setup Nix with OCI cache
+        uses: ./.github/actions/setup-nix-cache
+        with:
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+
+      - name: Compute live closure
+        run: |
+          # Both release artifacts share the same aarch64-linux closure
+          # for most paths, so building just devImage is enough to mark
+          # the live set. Production-only paths (signed UKI) get evicted
+          # by retention and rebuilt cheaply on the next release.
+          nix build --no-link \
+            .#nixosConfigurations.devImage.config.system.build.updatePackage
+          nix path-info --recursive \
+            .#nixosConfigurations.devImage.config.system.build.updatePackage \
+            | xargs -I{} basename {} | cut -c1-32 | sort -u \
+            > "${RUNNER_TEMP}/live-hashes.txt"
+          echo "Live hashes: $(wc -l < "${RUNNER_TEMP}/live-hashes.txt")"
+
+      - name: Prune index
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIXCACHE_REPO: ${{ github.repository }}
+          RETENTION_DAYS: ${{ inputs.retention_days || '30' }}
+          DRY_RUN: ${{ github.event_name == 'schedule' || inputs.dry_run }}
+        run: |
+          source .github/actions/setup-nix-cache/lib/cache-builder.sh
+          cutoff=$(date -u -d "${RETENTION_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
+          echo "Retention: ${RETENTION_DAYS} days (cutoff: ${cutoff})"
+          echo "Dry run: ${DRY_RUN}"
+
+          oci_get_token
+          existing_manifest=$(oci_get_manifest "cache-index")
+          if [[ -z "$existing_manifest" ]]; then
+            echo "No cache index found, nothing to GC"
+            exit 0
+          fi
+          index_digest=$(echo "$existing_manifest" | jq -r '.layers[0].digest // empty')
+          [[ -n "$index_digest" ]] || { echo "Empty index"; exit 0; }
+
+          index_file="${RUNNER_TEMP}/current-index.json"
+          oci_get_blob "$index_digest" > "$index_file"
+
+          # The python script writes a marker file if (and only if) it
+          # actually pruned entries in non-dry-run mode. We then use that
+          # marker to decide whether to re-upload the index manifest.
+          marker="${RUNNER_TEMP}/index-updated"
+          rm -f "$marker"
+
+          live_hashes_file="${RUNNER_TEMP}/live-hashes.txt"
+          MARKER_FILE="$marker" python3 - "$cutoff" "$DRY_RUN" "$index_file" "$live_hashes_file" <<'PYEOF'
+          import json, os, sys
+          cutoff, dry_run, index_file, live_file, marker = (
+              sys.argv[1], sys.argv[2] == "true", sys.argv[3], sys.argv[4], os.environ["MARKER_FILE"]
+          )
+          with open(index_file) as f:
+              index = json.load(f)
+          with open(live_file) as f:
+              live = set(f.read().strip().split("\n"))
+          keep, delete = {}, []
+          for h, entry in index.get("entries", {}).items():
+              added = entry.get("added", "2099-01-01T00:00:00Z")
+              if h in live or added >= cutoff:
+                  keep[h] = entry
+              else:
+                  delete.append((h, entry))
+                  print(f"DELETE: {h} ({entry.get('name', '?')}) added={added}")
+          print(f"Total: {len(keep)} keep, {len(delete)} delete")
+          if dry_run or not delete:
+              sys.exit(0)
+          index["entries"] = keep
+          index["gc_roots"] = [h for h in index.get("gc_roots", []) if h in keep]
+          with open(index_file, "w") as f:
+              json.dump(index, f, indent=2, sort_keys=True)
+          open(marker, "w").close()
+          PYEOF
+
+          [[ "$DRY_RUN" == "true" ]] && exit 0
+          [[ -f "$marker" ]] || { echo "Nothing pruned"; exit 0; }
+
+          index_digest=$(oci_push_blob "$index_file")
+          index_size=$(stat -c%s "$index_file")
+          config_file=$(mktemp); echo '{}' > "$config_file"
+          config_digest=$(oci_push_blob "$config_file")
+          config_size=$(stat -c%s "$config_file")
+          manifest=$(jq -n \
+            --arg cd "$config_digest" --argjson cs "$config_size" \
+            --arg id "$index_digest" --argjson is "$index_size" \
+            '{schemaVersion:2, mediaType:"application/vnd.oci.image.manifest.v1+json",
+              config:{mediaType:"application/vnd.oci.image.config.v1+json",digest:$cd,size:$cs},
+              layers:[{mediaType:"application/vnd.nix.cache.index.v1+json",digest:$id,size:$is}]}')
+          oci_push_manifest "cache-index" "$manifest"
+          echo "GC complete, index updated"

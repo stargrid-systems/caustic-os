@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   quick-checks:
@@ -19,32 +20,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Determinate Nix
-        uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
-
-      - name: Setup Nix S3 cache
-        uses: lemmih/nix-s3-cache-action@b0ad3ac7509d39827fa685f2ba598114e792c07b
+      - name: Setup Nix with OCI cache
+        uses: ./.github/actions/setup-nix-cache
         with:
-          s3-endpoint: ${{ vars.NIX_CACHE_ENDPOINT }}
-          bucket: ${{ vars.NIX_CACHE_BUCKET }}
-          region: ${{ vars.NIX_CACHE_REGION }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-          private-key: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Ensure daemon can read S3 credentials
-        run: |
-          sudo systemctl stop nix-daemon
-          sudo mkdir -p /etc/systemd/system/nix-daemon.service.d
-          sudo tee /etc/systemd/system/nix-daemon.service.d/override.conf > /dev/null <<'EOF'
-          [Service]
-          Environment=HOME=/root
-          Environment=AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials
-          Environment=AWS_CONFIG_FILE=/root/.aws/config
-          EOF
-          sudo systemctl daemon-reload
-          sudo systemctl start nix-daemon
 
       - name: nix flake check
         run: nix flake check --print-build-logs
@@ -63,36 +42,10 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
-      - name: Install Determinate Nix
-        uses: DeterminateSystems/determinate-nix-action@2a0be2498974c2b6327e19780488744384637d88  # v3.21.7
-
-      - name: Setup Nix S3 cache
-        uses: lemmih/nix-s3-cache-action@b0ad3ac7509d39827fa685f2ba598114e792c07b
+      - name: Setup Nix with OCI cache
+        uses: ./.github/actions/setup-nix-cache
         with:
-          s3-endpoint: ${{ vars.NIX_CACHE_ENDPOINT }}
-          bucket: ${{ vars.NIX_CACHE_BUCKET }}
-          region: ${{ vars.NIX_CACHE_REGION }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-          private-key: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Ensure daemon can read S3 credentials
-        run: |
-          sudo systemctl stop nix-daemon
-          sudo mkdir -p /etc/systemd/system/nix-daemon.service.d
-          sudo tee /etc/systemd/system/nix-daemon.service.d/override.conf > /dev/null <<'EOF'
-          [Service]
-          Environment=HOME=/root
-          Environment=AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials
-          Environment=AWS_CONFIG_FILE=/root/.aws/config
-          EOF
-          sudo systemctl daemon-reload
-          sudo systemctl start nix-daemon
-
-      # Validates that the flake evaluates cleanly for the target architecture.
-      # Real image outputs land in later phases:
-      #   nix build .#packages.aarch64-linux.productionImage
-      #   nix build .#packages.aarch64-linux.devImage
       - name: Evaluate flake for aarch64-linux
         run: nix flake show --system aarch64-linux --print-build-logs
