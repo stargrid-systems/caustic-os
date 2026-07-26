@@ -153,6 +153,7 @@ def upstream_stream_nar(path: str):
 class CacheIndex:
     def __init__(self):
         self._index: dict | None = None
+        self._nar_map: dict[str, str] = {}
         self._lock = threading.Lock()
         self._last_fetch = 0.0
         self._index_file = INDEX_DIR / "cache-index.json"
@@ -195,6 +196,17 @@ class CacheIndex:
             except json.JSONDecodeError:
                 pass
 
+        self._nar_map = {}
+        if self._index:
+            for entry in self._index.get("entries", {}).values():
+                nar_digest = entry.get("nar_digest")
+                if not nar_digest:
+                    continue
+                for line in entry.get("narinfo", "").split("\n"):
+                    if line.startswith("URL: "):
+                        self._nar_map[line[5:].strip()] = nar_digest
+                        break
+
         self._last_fetch = time.time()
 
     def lookup(self, store_hash: str) -> dict | None:
@@ -202,15 +214,9 @@ class CacheIndex:
         return index.get("entries", {}).get(store_hash)
 
     def find_nar_digest(self, nar_basename: str) -> str | None:
-        """Find the OCI blob digest for a NAR file by searching narinfo URL fields."""
-        index = self.get()
-        target = f"nar/{nar_basename}"
-        for _hash, entry in index.get("entries", {}).items():
-            narinfo = entry.get("narinfo", "")
-            for line in narinfo.split("\n"):
-                if line.startswith("URL: ") and line[5:].strip() == target:
-                    return entry.get("nar_digest")
-        return None
+        """Find the OCI blob digest for a NAR file via the cached URL map."""
+        self.get()
+        return self._nar_map.get(f"nar/{nar_basename}")
 
 
 cache_index = CacheIndex()

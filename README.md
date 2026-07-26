@@ -16,8 +16,9 @@ Artifacts:
 
 ## Secure Boot
 
-Production images are signed with Secure Boot keys. After flashing an image,
-enroll the keys in UEFI firmware on each device:
+Production images are signed with Secure Boot keys when keys are
+configured during the build. After flashing a signed image, enroll the
+keys in UEFI firmware on each device:
 
 ```sh
 sbctl enroll-keys --microsoft \

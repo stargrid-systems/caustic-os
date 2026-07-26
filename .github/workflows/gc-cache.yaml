@@ -58,7 +58,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIXCACHE_REPO: ${{ github.repository }}
           RETENTION_DAYS: ${{ inputs.retention_days || '30' }}
-          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          DRY_RUN: ${{ github.event_name == 'schedule' || inputs.dry_run }}
         run: |
           source .github/actions/setup-nix-cache/lib/cache-builder.sh
           cutoff=$(date -u -d "${RETENTION_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
