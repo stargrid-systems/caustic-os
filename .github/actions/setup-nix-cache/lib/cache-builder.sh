@@ -631,6 +631,11 @@ EOF
 find_locally_built_paths() {
     local paths=("$@")
 
+    if [[ ${#paths[@]} -eq 0 ]] || [[ -z "${paths[0]}" ]]; then
+        err "find_locally_built_paths: no paths provided"
+        return 1
+    fi
+
     # Pull our GHCR index so we can skip already-uploaded paths.
     local own_hashes=""
     oci_get_token 2>/dev/null || true

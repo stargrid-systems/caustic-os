@@ -77,7 +77,7 @@ jobs:
           NIXCACHE_REPO: ${{ github.repository }}
         run: |
           source .github/actions/setup-nix-cache/lib/cache-builder.sh
-          mapfile -t paths < <(nix path-info --recursive result)
+          mapfile -t paths < <(nix path-info --recursive ./result)
           upload_list=$(find_locally_built_paths "${paths[@]}")
           mapfile -t upload_array <<< "$upload_list"
           if [[ -z "${upload_array[0]:-}" ]]; then
@@ -85,5 +85,5 @@ jobs:
             exit 0
           fi
           export_paths_directly "${upload_array[@]}"
-          top_level=$(nix path-info result)
+          top_level=$(nix path-info ./result)
           upload_to_oci "$top_level"
