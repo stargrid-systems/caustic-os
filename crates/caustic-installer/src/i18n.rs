@@ -38,6 +38,7 @@ pub enum Text {
     DoneHint,
     Error,
     RpibootNotFound,
+    Removable,
 }
 
 #[must_use]
@@ -101,5 +102,8 @@ pub const fn t(lang: Lang, text: Text) -> &'static str {
             "rpiboot wurde nicht gefunden.\n\
              Zu finden unter https://github.com/raspberrypi/usbboot"
         }
+
+        (Lang::En, Text::Removable) => "(removable)",
+        (Lang::De, Text::Removable) => "(wechselmedien)",
     }
 }

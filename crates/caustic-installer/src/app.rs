@@ -321,7 +321,7 @@ impl Installer {
                 ];
 
                 if d.removable {
-                    info = info.push(text("(removable)").size(12));
+                    info = info.push(text(t(self.lang, Text::Removable)).size(12));
                 }
 
                 let label = row![

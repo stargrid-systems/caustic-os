@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Caustic Installer
+Name=Caustic OS Installer
 Comment=Flash Caustic OS images onto CM4 modules
 Exec=caustic-installer
 Icon=caustic-installer
