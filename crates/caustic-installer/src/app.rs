@@ -47,6 +47,7 @@ pub struct Installer {
     image_path: Option<PathBuf>,
     error: Option<String>,
     simulate: bool,
+    auto: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -80,7 +81,7 @@ enum Step {
 }
 
 impl Installer {
-    pub fn init(simulate: bool) -> (Self, Task<Message>) {
+    pub fn init(simulate: bool, auto: bool) -> (Self, Task<Message>) {
         let lang = Lang::detect();
         let channel = Channel::Production;
         let task = if simulate {
@@ -98,6 +99,7 @@ impl Installer {
                 image_path: None,
                 error: None,
                 simulate,
+                auto,
             },
             task,
         )
@@ -108,49 +110,24 @@ impl Installer {
             Message::TagsLoaded(Ok(tags)) => {
                 self.tags = tags;
                 self.step = Step::SelectRelease;
+                if self.auto {
+                    self.selected_tag = Some(0);
+                    return delayed_message(Duration::from_secs(1), Message::DownloadClicked);
+                }
                 Task::none()
             }
             Message::TagsLoaded(Err(err))
             | Message::DownloadFinished(Err(err))
             | Message::FlashFinished(Err(err))
             | Message::RpibootFinished(Err(err)) => {
-                self.error = Some(err);
-                match &self.step {
-                    Step::Flashing { .. }
-                    | Step::SelectDisk { .. }
-                    | Step::RunningRpiboot => {
-                        let disks = get_disks(self.simulate);
-                        self.step = Step::SelectDisk {
-                            disks,
-                            selected: None,
-                        };
-                    }
-                    _ => {
-                        self.step = Step::SelectRelease;
-                    }
-                }
+                self.handle_error(err);
                 Task::none()
             }
             Message::TagSelected(index) => {
                 self.selected_tag = Some(index);
                 Task::none()
             }
-            Message::ChannelSelected(channel) => {
-                if channel != self.channel {
-                    self.channel = channel;
-                    self.selected_tag = None;
-                    self.tags.clear();
-                    self.error = None;
-                    self.image_path = None;
-                    self.step = Step::Loading;
-                    return if self.simulate {
-                        simulate_tags()
-                    } else {
-                        load_tags(channel)
-                    };
-                }
-                Task::none()
-            }
+            Message::ChannelSelected(channel) => self.select_channel(channel),
             Message::DownloadClicked => self.start_download(),
             Message::DownloadProgress(progress) => {
                 if let Step::Downloading {
@@ -162,17 +139,13 @@ impl Installer {
                 Task::none()
             }
             Message::DownloadFinished(Ok(()))
-            | Message::RpibootFinished(Ok(())) => {
-                let disks = get_disks(self.simulate);
-                self.step = Step::SelectDisk {
-                    disks,
-                    selected: None,
-                };
-                Task::none()
-            }
+            | Message::RpibootFinished(Ok(())) => self.enter_disk_selection(),
             Message::DiskSelected(index) => {
                 if let Step::SelectDisk { selected, .. } = &mut self.step {
                     *selected = Some(index);
+                }
+                if self.auto {
+                    return delayed_message(Duration::from_secs(1), Message::FlashClicked);
                 }
                 Task::none()
             }
@@ -202,6 +175,65 @@ impl Installer {
                 Task::none()
             }
         }
+    }
+
+    fn handle_error(&mut self, err: String) {
+        self.error = Some(err);
+        match &self.step {
+            Step::Flashing { .. }
+            | Step::SelectDisk { .. }
+            | Step::RunningRpiboot => {
+                let disks = get_disks(self.simulate);
+                self.step = Step::SelectDisk {
+                    disks,
+                    selected: None,
+                };
+            }
+            _ => {
+                self.step = Step::SelectRelease;
+            }
+        }
+    }
+
+    fn select_channel(&mut self, channel: Channel) -> Task<Message> {
+        if channel == self.channel {
+            return Task::none();
+        }
+        self.channel = channel;
+        self.selected_tag = None;
+        self.tags.clear();
+        self.error = None;
+        self.image_path = None;
+        self.step = Step::Loading;
+        if self.simulate {
+            simulate_tags()
+        } else {
+            load_tags(channel)
+        }
+    }
+
+    fn enter_disk_selection(&mut self) -> Task<Message> {
+        let disks = get_disks(self.simulate);
+        let disk_count = disks.len();
+        self.step = Step::SelectDisk {
+            disks,
+            selected: None,
+        };
+        if self.auto {
+            return Task::perform(
+                async move {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                },
+                move |()| {
+                    if disk_count > 0 {
+                        Message::DiskSelected(0)
+                    } else {
+                        Message::DiskRefreshClicked
+                    }
+                },
+            );
+        }
+        Task::none()
     }
 
     pub fn view(&self) -> Element<'_, Message> {
@@ -526,6 +558,15 @@ impl Installer {
 
         Task::sip(straw, Message::FlashProgress, Message::FlashFinished)
     }
+}
+
+fn delayed_message(delay: Duration, msg: Message) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::time::sleep(delay).await;
+        },
+        move |()| msg,
+    )
 }
 
 fn channel_button(

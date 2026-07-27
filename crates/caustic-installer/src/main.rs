@@ -6,9 +6,10 @@ mod usbboot;
 
 pub fn main() -> iced::Result {
     let simulate = std::env::args().any(|a| a == "--simulate");
+    let auto = std::env::args().any(|a| a == "--auto");
 
     iced::application(
-        move || app::Installer::init(simulate),
+        move || app::Installer::init(simulate, auto),
         app::Installer::update,
         app::Installer::view,
     )
