@@ -160,11 +160,13 @@ async fn pull_layers(
             .as_ref()
             .and_then(|annotations| annotations.get("org.opencontainers.image.title"))
             .ok_or_else(|| anyhow!("layer missing title annotation"))?;
+
+        if name.contains('/') || name.contains("..") || name.contains(std::path::MAIN_SEPARATOR) {
+            return Err(anyhow!("layer title contains unsafe path characters: {name}"));
+        }
+
         tracing::info!(%name, digest = %layer.digest, "pulling layer");
         let dst = staging.join(name);
-        if let Some(parent) = dst.parent() {
-            fs::create_dir_all(parent).ok();
-        }
         caustic_oci::pull_blob(registry, tag, layer, &dst)
             .await
             .with_context(|| format!("pull layer {name}"))?;

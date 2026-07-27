@@ -110,6 +110,10 @@ pub async fn pull_blob(
 ///
 /// `progress` is called with `(bytes_downloaded, total_bytes)` after each chunk.
 ///
+/// # Panics
+///
+/// Panics if a chunk length exceeds `u64::MAX` (not possible on current platforms).
+///
 /// # Errors
 ///
 /// Returns [`Error::Parse`] if the reference cannot be parsed.
@@ -151,7 +155,7 @@ pub async fn pull_blob_streaming(
             .write_all(&chunk)
             .await
             .map_err(|e| Error::Io(e.to_string()))?;
-        downloaded += u64::try_from(chunk.len()).unwrap_or(0);
+        downloaded += u64::try_from(chunk.len()).expect("chunk length fits in u64");
         progress(downloaded, total);
     }
 
