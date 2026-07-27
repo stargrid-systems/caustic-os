@@ -22,12 +22,23 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read version from Cargo.toml
+      - name: Determine version and tag
         id: version
         run: |
-          version=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' crates/caustic-installer/Cargo.toml | head -1)
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#installer-v}"
+          else
+            version=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' crates/caustic-installer/Cargo.toml | head -1)
+            tag="installer-v${version}"
+          fi
+          if [ -z "${version}" ]; then
+            echo "::error::Could not determine version" >&2
+            exit 1
+          fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "tag=installer-v${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       - name: Create draft release
         env:
