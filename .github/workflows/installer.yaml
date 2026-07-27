@@ -5,11 +5,6 @@ on:
     tags:
       - 'installer-*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version (e.g. v1.0.0)'
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -19,31 +14,30 @@ jobs:
     name: Create draft release
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.tag.outputs.tag }}
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Determine tag name
-        id: tag
+      - name: Read version from Cargo.toml
+        id: version
         run: |
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            echo "tag=installer-${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
+          version=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' crates/caustic-installer/Cargo.toml | head -1)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=installer-v${version}" >> "$GITHUB_OUTPUT"
 
       - name: Create draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          version="${TAG#installer-}"
           gh release create "${TAG}" \
             --target "${GITHUB_SHA}" \
-            --title "Installer ${version}" \
+            --title "Installer ${VERSION}" \
             --notes "Caustic OS installer." \
             --draft
 
@@ -53,6 +47,7 @@ jobs:
     runs-on: ubuntu-26.04
     env:
       TAG: ${{ needs.create-release.outputs.tag }}
+      VERSION: ${{ needs.create-release.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -82,23 +77,22 @@ jobs:
           LINUXDEPLOY_SHA256: e87ee0815d109282fdda73e34c2361d64d02b0ffaea3674b18f1fd1f6a687dcf
         run: |
           set -euo pipefail
-          version="${TAG#installer-}"
 
           convert -size 256x256 xc:'#1a1a2e' \
             -fill '#e94560' -draw 'rectangle 64,64 192,192' \
-            icon.png
+            caustic-installer.png
 
           curl -fsSL -o linuxdeploy \
             https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           echo "${LINUXDEPLOY_SHA256}  linuxdeploy" | sha256sum -c -
           chmod +x linuxdeploy
 
-          OUTPUT="caustic-installer-${version}-x86_64.AppImage" \
+          OUTPUT="caustic-installer-${VERSION}-x86_64.AppImage" \
             ./linuxdeploy \
               --appdir AppDir \
               --executable "$(pwd)/target/release/caustic-installer" \
               --desktop-file crates/caustic-installer/caustic-installer.desktop \
-              --icon-file icon.png \
+              --icon-file caustic-installer.png \
               --output appimage
 
       - name: Upload to release
@@ -113,6 +107,7 @@ jobs:
     runs-on: windows-latest
     env:
       TAG: ${{ needs.create-release.outputs.tag }}
+      VERSION: ${{ needs.create-release.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -128,8 +123,7 @@ jobs:
       - name: Create zip
         shell: pwsh
         run: |
-          $version = $env:TAG.Substring(10)
-          7z a "caustic-installer-$version-windows-x86_64.zip" target/release/caustic-installer.exe
+          7z a "caustic-installer-${env:VERSION}-windows-x86_64.zip" target/release/caustic-installer.exe
 
       - name: Upload to release
         env:
