@@ -1,52 +1,56 @@
-use iced::Task;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use iced::task::{sipper, Straw};
 use iced::widget::{button, column, container, progress_bar, text};
-use iced::{Center, Element, Fill};
+use iced::{Center, Element, Fill, Task};
 
-use crate::disk::{self, Disk};
-use crate::download;
-use crate::flash;
-use crate::github::{self, Release};
+use caustic_installer_core::disk::{self, Disk};
+use caustic_installer_core::{flash, oci};
 
-const REPO: &str = "stargrid-systems/caustic-os";
+const REGISTRY: &str = "ghcr.io/stargrid-systems/caustic-os";
 
 pub struct Installer {
     step: Step,
-    releases: Vec<Release>,
-    selected_release: Option<usize>,
+    tags: Vec<String>,
+    selected_tag: Option<usize>,
     error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    ReleasesLoaded(Result<Vec<Release>, github::Error>),
-    ReleaseSelected(usize),
+    TagsLoaded(Result<Vec<String>, String>),
+    TagSelected(usize),
     DownloadClicked,
     DownloadProgress(f32),
-    DownloadFinished(Result<(), download::Error>),
+    DownloadFinished(Result<(), String>),
     DiskSelected(usize),
     FlashClicked,
     FlashProgress(f32),
-    FlashFinished(Result<(), flash::Error>),
+    FlashFinished(Result<(), String>),
     Back,
 }
 
 enum Step {
     Loading,
     SelectRelease,
-    Downloading { progress: f32, image_path: String },
-    SelectDisk { image_path: String, disks: Vec<Disk>, selected: Option<usize> },
+    Downloading { progress: f32, image_path: PathBuf },
+    SelectDisk { image_path: PathBuf, disks: Vec<Disk>, selected: Option<usize> },
     Flashing { progress: f32 },
     Done,
 }
 
 impl Installer {
     pub fn new() -> (Self, Task<Message>) {
-        let task = Task::perform(github::fetch_releases(REPO), Message::ReleasesLoaded);
+        let task = Task::perform(
+            async { oci::list_tags(REGISTRY).await.map_err(|e| e.to_string()) },
+            Message::TagsLoaded,
+        );
         (
             Self {
                 step: Step::Loading,
-                releases: Vec::new(),
-                selected_release: None,
+                tags: Vec::new(),
+                selected_tag: None,
                 error: None,
             },
             task,
@@ -55,17 +59,17 @@ impl Installer {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::ReleasesLoaded(Ok(releases)) => {
-                self.releases = releases;
+            Message::TagsLoaded(Ok(tags)) => {
+                self.tags = tags;
                 self.step = Step::SelectRelease;
                 Task::none()
             }
-            Message::ReleasesLoaded(Err(err)) => {
-                self.error = Some(err.to_string());
+            Message::TagsLoaded(Err(err)) => {
+                self.error = Some(err);
                 Task::none()
             }
-            Message::ReleaseSelected(index) => {
-                self.selected_release = Some(index);
+            Message::TagSelected(index) => {
+                self.selected_tag = Some(index);
                 Task::none()
             }
             Message::DownloadClicked => self.start_download(),
@@ -87,7 +91,7 @@ impl Installer {
                 Task::none()
             }
             Message::DownloadFinished(Err(err)) => {
-                self.error = Some(err.to_string());
+                self.error = Some(err);
                 self.step = Step::SelectRelease;
                 Task::none()
             }
@@ -109,7 +113,7 @@ impl Installer {
                 Task::none()
             }
             Message::FlashFinished(Err(err)) => {
-                self.error = Some(err.to_string());
+                self.error = Some(err);
                 Task::none()
             }
             Message::Back => {
@@ -122,7 +126,7 @@ impl Installer {
 
     pub fn view(&self) -> Element<'_, Message> {
         let content: Element<'_, Message> = match &self.step {
-            Step::Loading => column![text("Loading releases...").size(20)].into(),
+            Step::Loading => column![text("Loading available releases...").size(20)].into(),
             Step::SelectRelease => self.view_releases(),
             Step::Downloading { progress, .. } => {
                 column![
@@ -151,8 +155,7 @@ impl Installer {
         };
 
         let styled = if let Some(err) = &self.error {
-            column![content, text(format!("Error: {err}")).size(14)]
-                .spacing(10)
+            column![content, text(format!("Error: {err}")).size(14)].spacing(10)
         } else {
             column![content]
         };
@@ -171,14 +174,14 @@ impl Installer {
     fn view_releases(&self) -> Element<'_, Message> {
         let mut col = column![text("Select a release").size(24)];
 
-        for (i, release) in self.releases.iter().enumerate() {
-            let label = format!("{} ({})", release.tag, release.date);
-            let btn = button(text(label));
-
-            col = col.push(btn.on_press(Message::ReleaseSelected(i)));
+        for (i, tag) in self.tags.iter().enumerate() {
+            col = col.push(
+                button(text(tag.clone()))
+                    .on_press(Message::TagSelected(i)),
+            );
         }
 
-        if self.selected_release.is_some() {
+        if self.selected_tag.is_some() {
             col = col.push(
                 button(text("Download"))
                     .style(button::success)
@@ -193,10 +196,10 @@ impl Installer {
         let mut col = column![text("Select target disk").size(24)];
 
         for (i, disk) in disks.iter().enumerate() {
-            let label = format!("{} ({} GB)", disk.name, disk.size_gb);
-            let btn = button(text(label));
-
-            col = col.push(btn.on_press(Message::DiskSelected(i)));
+            col = col.push(
+                button(text(format!("{} ({} GB)", disk.name, disk.size_gb)))
+                    .on_press(Message::DiskSelected(i)),
+            );
         }
 
         if selected.is_some() {
@@ -211,31 +214,31 @@ impl Installer {
     }
 
     fn start_download(&mut self) -> Task<Message> {
-        let Some(index) = self.selected_release else {
+        let Some(index) = self.selected_tag else {
             return Task::none();
         };
-        let Some(release) = self.releases.get(index).cloned() else {
+        let Some(tag) = self.tags.get(index).cloned() else {
             return Task::none();
         };
 
         let image_path = std::env::temp_dir()
-            .join(format!("caustic-os-{}.img.xz", release.tag))
+            .join(format!("caustic-os-{tag}.img"))
             .to_string_lossy()
             .into_owned();
 
-        let (task, _handle) = Task::sip(
-            download::download_image(
-                release.image_url,
-                image_path.clone(),
-                release.image_checksum,
-            ),
-            Message::DownloadProgress,
-            Message::DownloadFinished,
-        )
-        .abortable();
+        let image_path_buf = PathBuf::from(&image_path);
 
-        self.step = Step::Downloading { progress: 0.0, image_path };
-        task
+        let straw = run_with_progress(move |progress| {
+            oci::pull_image(
+                REGISTRY.to_string(),
+                tag,
+                PathBuf::from(&image_path),
+                progress,
+            )
+        });
+
+        self.step = Step::Downloading { progress: 0.0, image_path: image_path_buf };
+        Task::sip(straw, Message::DownloadProgress, Message::DownloadFinished)
     }
 
     fn start_flash(&mut self) -> Task<Message> {
@@ -251,17 +254,49 @@ impl Installer {
             return Task::none();
         };
 
-        let path = image_path.clone();
+        let image = image_path.clone();
         let target = disk.path.clone();
 
-        let (task, _handle) = Task::sip(
-            flash::flash_image(path, target),
-            Message::FlashProgress,
-            Message::FlashFinished,
-        )
-        .abortable();
+        let straw = run_with_progress(move |progress| {
+            flash::flash_image(image, target, progress)
+        });
 
         self.step = Step::Flashing { progress: 0.0 };
-        task
+        Task::sip(straw, Message::FlashProgress, Message::FlashFinished)
     }
+}
+
+fn run_with_progress<F, Fut, E>(f: F) -> impl Straw<(), f32, String>
+where
+    F: FnOnce(Arc<dyn Fn(u64, u64) + Send + Sync>) -> Fut + Send,
+    Fut: std::future::Future<Output = Result<(), E>> + Send,
+    E: std::fmt::Display + Send + 'static,
+{
+    sipper(async move |mut straw| {
+        let (tx, mut rx) = tokio::sync::watch::channel(0.0f32);
+
+        let progress: Arc<dyn Fn(u64, u64) + Send + Sync> = Arc::new(move |done, total| {
+            let pct = if total > 0 {
+                done as f32 / total as f32 * 100.0
+            } else {
+                0.0
+            };
+            let _ = tx.send(pct);
+        });
+
+        let fut = f(progress);
+        tokio::pin!(fut);
+
+        loop {
+            tokio::select! {
+                result = &mut fut => {
+                    return result.map_err(|e| e.to_string());
+                }
+                Ok(_) = rx.changed() => {
+                    let pct = *rx.borrow();
+                    let _ = straw.send(pct).await;
+                }
+            }
+        }
+    })
 }

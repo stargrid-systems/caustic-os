@@ -1,9 +1,4 @@
 mod app;
-mod disk;
-mod download;
-mod flash;
-mod github;
-mod rpiboot;
 
 pub fn main() -> iced::Result {
     iced::application(app::Installer::new, app::Installer::update, app::Installer::view)

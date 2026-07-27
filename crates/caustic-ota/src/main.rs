@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
-use oci_distribution::{
+use oci_client::{
     client::ClientConfig,
-    manifest::OciImageManifest,
+    manifest::{OciImageManifest, OciManifest},
     secrets::RegistryAuth,
     Client, Reference,
 };
@@ -153,10 +153,13 @@ async fn fetch_manifest(registry: &str, tag: &str) -> Result<OciImageManifest> {
     let client = Client::new(ClientConfig::default());
     let auth = RegistryAuth::Anonymous;
     let (manifest, _) = client
-        .pull_image_manifest(&reference, &auth)
+        .pull_manifest(&reference, &auth)
         .await
         .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
-    Ok(manifest)
+    match manifest {
+        OciManifest::Image(m) => Ok(m),
+        OciManifest::ImageIndex(_) => Err(anyhow!("expected image manifest, got image index")),
+    }
 }
 
 fn extract_version(manifest: &OciImageManifest) -> Result<String> {
@@ -218,7 +221,7 @@ fn verify_sha256sums(staging: &Path) -> Result<()> {
         let bytes = fs::read(&path).with_context(|| format!("read {name}"))?;
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
-        let actual = format!("{:x}", hasher.finalize());
+        let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
         if actual != expected {
             return Err(anyhow!("checksum mismatch for {name}"));
         }

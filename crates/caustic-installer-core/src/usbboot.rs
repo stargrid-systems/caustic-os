@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::process::Command;
 
 pub fn find_rpiboot() -> Option<String> {
@@ -9,7 +7,9 @@ pub fn find_rpiboot() -> Option<String> {
         "rpiboot"
     };
 
-    which::which(name).ok().map(|p| p.to_string_lossy().into_owned())
+    which::which(name)
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
 pub fn run_rpiboot() -> Result<(), String> {
