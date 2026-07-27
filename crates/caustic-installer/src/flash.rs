@@ -72,11 +72,16 @@ async fn flash_direct(
             .write_all(&buf[..n])
             .await
             .map_err(|e| Error(e.to_string()))?;
-        written += u64::try_from(n).unwrap_or(0);
+        written += u64::try_from(n).expect("read length fits in u64");
         progress(written, file_size);
     }
 
     writer.flush().await.map_err(|e| Error(e.to_string()))?;
+    writer
+        .get_ref()
+        .sync_all()
+        .await
+        .map_err(|e| Error(e.to_string()))?;
     Ok(())
 }
 

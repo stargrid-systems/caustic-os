@@ -398,6 +398,10 @@ impl Installer {
             .join(self.channel.slug())
             .join(format!("caustic-os-{tag}.img"));
 
+        if let Some(parent) = image_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
         if image_path.exists()
             && std::fs::metadata(&image_path)
                 .is_ok_and(|m| m.len() > 0)

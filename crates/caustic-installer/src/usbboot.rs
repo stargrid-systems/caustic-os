@@ -85,13 +85,10 @@ fn build_elevated_command(binary: &str) -> Result<tokio::process::Command, Error
 
 #[cfg(target_os = "linux")]
 fn is_root() -> bool {
-    std::process::Command::new("id")
-        .arg("-u")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|s| s.trim().parse::<u32>().ok())
-        .is_some_and(|uid| uid == 0)
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    unsafe { geteuid() == 0 }
 }
 
 #[cfg(not(target_os = "linux"))]

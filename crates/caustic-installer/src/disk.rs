@@ -14,8 +14,8 @@ pub fn list_disks() -> Vec<Disk> {
         return Vec::new();
     };
 
-    let boot_disks = read_boot_disks();
-    let swap_disks = read_swap_disks();
+    let boot_disks = expand_device_paths(&read_boot_disks());
+    let swap_disks = expand_device_paths(&read_swap_disks());
 
     let mut disks = Vec::new();
 
@@ -123,6 +123,31 @@ fn read_swap_disks() -> Vec<String> {
     }
 
     devices
+}
+
+#[cfg(target_os = "linux")]
+fn expand_device_paths(devices: &[String]) -> Vec<String> {
+    let mut expanded = Vec::new();
+    for dev in devices {
+        let canonical = std::fs::canonicalize(dev)
+            .map_or_else(|_| dev.clone(), |p| p.to_string_lossy().into_owned());
+
+        if !expanded.contains(&canonical) {
+            expanded.push(canonical.clone());
+        }
+
+        if let Some(base) = canonical.strip_prefix("/dev/")
+            && let Ok(slaves) = std::fs::read_dir(format!("/sys/block/{base}/slaves"))
+        {
+            for entry in slaves.flatten() {
+                let slave = format!("/dev/{}", entry.file_name().to_string_lossy());
+                if !expanded.contains(&slave) {
+                    expanded.push(slave);
+                }
+            }
+        }
+    }
+    expanded
 }
 
 #[cfg(target_os = "linux")]
