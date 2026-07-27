@@ -50,8 +50,9 @@ async fn try_open_device(target: &str) -> std::io::Result<tokio::fs::File> {
 
 #[cfg(target_os = "macos")]
 async fn unmount_disk(target: &str) {
+    let disk = target.replace("/dev/rdisk", "/dev/disk");
     let _ = tokio::process::Command::new("diskutil")
-        .args(["unmountDisk", target])
+        .args(["unmountDisk", &disk])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
