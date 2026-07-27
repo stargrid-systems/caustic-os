@@ -8,8 +8,10 @@ license.workspace = true
 
 [dependencies]
 caustic-oci = { workspace = true }
-iced = { workspace = true, features = ["wgpu", "tokio", "sipper", "wayland"] }
-tokio = { workspace = true, features = ["sync", "macros", "fs", "io-util"] }
+directories = { workspace = true }
+iced = { workspace = true, features = ["sipper", "tokio", "wayland", "wgpu"] }
+sys-locale = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "process", "sync"] }
 which = { workspace = true, features = ["real-sys"] }
 
 [lints]

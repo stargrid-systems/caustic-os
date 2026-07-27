@@ -10,6 +10,8 @@ use tokio::io::AsyncWriteExt;
 
 use crate::Error;
 
+const WRITE_BUFFER_SIZE: usize = 8 * 1024 * 1024;
+
 fn parse_ref(registry: &str, tag: &str) -> Result<Reference, Error> {
     format!("{registry}:{tag}")
         .parse()
@@ -132,9 +134,10 @@ pub async fn pull_blob_streaming(
         .map_err(|e| Error::Fetch(e.to_string()))?;
 
     let total = stream.content_length.unwrap_or(0);
-    let mut file = tokio::fs::File::create(dest)
+    let file = tokio::fs::File::create(dest)
         .await
         .map_err(|e| Error::Io(e.to_string()))?;
+    let mut writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, file);
 
     let mut downloaded: u64 = 0;
     let mut blob_stream = stream.stream;
@@ -144,14 +147,16 @@ pub async fn pull_blob_streaming(
         .await
         .map_err(|e| Error::Fetch(e.to_string()))?
     {
-        file.write_all(&chunk)
+        writer
+            .write_all(&chunk)
             .await
             .map_err(|e| Error::Io(e.to_string()))?;
         downloaded += u64::try_from(chunk.len()).unwrap_or(0);
         progress(downloaded, total);
     }
 
-    file.flush()
+    writer
+        .flush()
         .await
         .map_err(|e| Error::Io(e.to_string()))?;
     Ok(())

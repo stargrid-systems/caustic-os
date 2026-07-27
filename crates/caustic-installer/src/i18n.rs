@@ -1,3 +1,5 @@
+use sys_locale::get_locale;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
     En,
@@ -5,15 +7,15 @@ pub enum Lang {
 }
 
 impl Lang {
+    #[must_use]
     pub fn detect() -> Self {
-        for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
-            if let Ok(val) = std::env::var(var)
-                && val.to_lowercase().starts_with("de")
-            {
-                return Self::De;
+        get_locale().map_or(Self::En, |locale| {
+            if locale.to_lowercase().starts_with("de") {
+                Self::De
+            } else {
+                Self::En
             }
-        }
-        Self::En
+        })
     }
 }
 
@@ -29,13 +31,16 @@ pub enum Text {
     DataLossWarning,
     Flash,
     Flashing,
+    Rpiboot,
+    RpibootRunning,
+    Refresh,
     Done,
     DoneHint,
-    Close,
     Error,
     RpibootNotFound,
 }
 
+#[must_use]
 pub const fn t(lang: Lang, text: Text) -> &'static str {
     match (lang, text) {
         (Lang::En, Text::Loading) => "Loading available releases...",
@@ -70,24 +75,30 @@ pub const fn t(lang: Lang, text: Text) -> &'static str {
         (Lang::En, Text::Flashing) => "Flashing image to disk...",
         (Lang::De, Text::Flashing) => "Image wird auf den Datenträger geflasht...",
 
+        (Lang::En, Text::Rpiboot) => "Prepare CM4 (rpiboot)",
+        (Lang::De, Text::Rpiboot) => "CM4 vorbereiten (rpiboot)",
+
+        (Lang::En, Text::RpibootRunning) => "Running rpiboot...",
+        (Lang::De, Text::RpibootRunning) => "rpiboot wird ausgeführt...",
+
+        (Lang::En, Text::Refresh) => "Refresh",
+        (Lang::De, Text::Refresh) => "Aktualisieren",
+
         (Lang::En, Text::Done) => "Installation complete!",
         (Lang::De, Text::Done) => "Installation abgeschlossen!",
 
         (Lang::En, Text::DoneHint) => "You can now boot the device.",
         (Lang::De, Text::DoneHint) => "Das Gerät kann jetzt gestartet werden.",
 
-        (Lang::En, Text::Close) => "Close",
-        (Lang::De, Text::Close) => "Schließen",
-
         (Lang::En, Text::Error) => "Error",
         (Lang::De, Text::Error) => "Fehler",
 
         (Lang::En, Text::RpibootNotFound) => {
-            "rpiboot was not found on this system.\n\
+            "rpiboot was not found.\n\
              Install it from https://github.com/raspberrypi/usbboot"
         }
         (Lang::De, Text::RpibootNotFound) => {
-            "rpiboot wurde auf diesem System nicht gefunden.\n\
+            "rpiboot wurde nicht gefunden.\n\
              Zu finden unter https://github.com/raspberrypi/usbboot"
         }
     }

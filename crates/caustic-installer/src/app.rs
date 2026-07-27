@@ -10,6 +10,7 @@ use iced::{Center, Element, Fill, Task};
 use crate::disk::{self, Disk};
 use crate::flash;
 use crate::i18n::{t, Lang, Text};
+use crate::usbboot;
 
 const REGISTRY_PROD: &str = "ghcr.io/stargrid-systems/caustic-os";
 const REGISTRY_DEV: &str = "ghcr.io/stargrid-systems/caustic-os-dev";
@@ -35,6 +36,7 @@ pub struct Installer {
     step: Step,
     tags: Vec<String>,
     selected_tag: Option<usize>,
+    image_path: Option<PathBuf>,
     error: Option<String>,
 }
 
@@ -47,27 +49,24 @@ pub enum Message {
     DownloadProgress(f32),
     DownloadFinished(Result<(), String>),
     DiskSelected(usize),
+    DiskRefreshClicked,
+    RpibootClicked,
+    RpibootFinished(Result<(), String>),
     FlashClicked,
     FlashProgress(f32),
     FlashFinished(Result<(), String>),
-    LanguageSelected(Lang),
 }
 
 enum Step {
     Loading,
     SelectRelease,
-    Downloading {
-        progress: f32,
-        image_path: PathBuf,
-    },
+    Downloading { progress: f32 },
     SelectDisk {
-        image_path: PathBuf,
         disks: Vec<Disk>,
         selected: Option<usize>,
     },
-    Flashing {
-        progress: f32,
-    },
+    RunningRpiboot,
+    Flashing { progress: f32 },
     Done,
 }
 
@@ -83,6 +82,7 @@ impl Installer {
                 step: Step::Loading,
                 tags: Vec::new(),
                 selected_tag: None,
+                image_path: None,
                 error: None,
             },
             task,
@@ -98,9 +98,23 @@ impl Installer {
             }
             Message::TagsLoaded(Err(err))
             | Message::DownloadFinished(Err(err))
-            | Message::FlashFinished(Err(err)) => {
+            | Message::FlashFinished(Err(err))
+            | Message::RpibootFinished(Err(err)) => {
                 self.error = Some(err);
-                self.step = Step::SelectRelease;
+                match &self.step {
+                    Step::Flashing { .. }
+                    | Step::SelectDisk { .. }
+                    | Step::RunningRpiboot => {
+                        let disks = disk::list_disks();
+                        self.step = Step::SelectDisk {
+                            disks,
+                            selected: None,
+                        };
+                    }
+                    _ => {
+                        self.step = Step::SelectRelease;
+                    }
+                }
                 Task::none()
             }
             Message::TagSelected(index) => {
@@ -115,6 +129,7 @@ impl Installer {
                     self.selected_tag = None;
                     self.tags.clear();
                     self.error = None;
+                    self.image_path = None;
                     self.step = Step::Loading;
                     load_tags(channel)
                 }
@@ -129,15 +144,13 @@ impl Installer {
                 }
                 Task::none()
             }
-            Message::DownloadFinished(Ok(())) => {
-                if let Step::Downloading { image_path, .. } = &self.step {
-                    let disks = disk::list_disks();
-                    self.step = Step::SelectDisk {
-                        image_path: image_path.clone(),
-                        disks,
-                        selected: None,
-                    };
-                }
+            Message::DownloadFinished(Ok(()))
+            | Message::RpibootFinished(Ok(())) => {
+                let disks = disk::list_disks();
+                self.step = Step::SelectDisk {
+                    disks,
+                    selected: None,
+                };
                 Task::none()
             }
             Message::DiskSelected(index) => {
@@ -146,12 +159,20 @@ impl Installer {
                 }
                 Task::none()
             }
+            Message::DiskRefreshClicked => {
+                let old_selected = match &self.step {
+                    Step::SelectDisk { selected, .. } => *selected,
+                    _ => None,
+                };
+                let disks = disk::list_disks();
+                let selected = old_selected.filter(|&i| i < disks.len());
+                self.step = Step::SelectDisk { disks, selected };
+                Task::none()
+            }
+            Message::RpibootClicked => self.start_rpiboot(),
             Message::FlashClicked => self.start_flash(),
             Message::FlashProgress(progress) => {
-                if let Step::Flashing {
-                    progress: current,
-                } = &mut self.step
-                {
+                if let Step::Flashing { progress: current } = &mut self.step {
                     *current = progress;
                 }
                 Task::none()
@@ -160,73 +181,51 @@ impl Installer {
                 self.step = Step::Done;
                 Task::none()
             }
-            Message::LanguageSelected(lang) => {
-                self.lang = lang;
-                Task::none()
-            }
         }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let header = row![
-            text("Caustic OS Installer").size(22),
-            Space::new().width(Fill),
-            button(text(match self.lang {
-                Lang::En => "DE",
-                Lang::De => "EN",
-            }))
-            .on_press(Message::LanguageSelected(match self.lang {
-                Lang::En => Lang::De,
-                Lang::De => Lang::En,
-            })),
-        ]
-        .align_y(Center);
-
-        let channel_row = row![
-            channel_button(self.channel, Channel::Production, self.lang),
-            channel_button(self.channel, Channel::Development, self.lang),
-        ]
-        .spacing(8);
+        let title = text("Caustic OS Installer").size(22);
 
         let content: Element<'_, Message> = match &self.step {
-            Step::Loading => {
-                column![text(t(self.lang, Text::Loading)).size(16)].into()
-            }
+            Step::Loading => column![text(t(self.lang, Text::Loading)).size(16)].into(),
             Step::SelectRelease => self.view_releases(),
-            Step::Downloading { progress, .. } => {
-                column![
-                    text(t(self.lang, Text::Downloading)).size(18),
-                    progress_bar(0.0..=100.0, *progress),
-                    text(format!("{progress:.0}%")).size(14),
-                ]
-                .spacing(12)
-                .into()
+            Step::Downloading { progress } => column![
+                text(t(self.lang, Text::Downloading)).size(18),
+                progress_bar(0.0..=100.0, *progress),
+                text(format!("{progress:.0}%")).size(14),
+            ]
+            .spacing(12)
+            .into(),
+            Step::SelectDisk { disks, selected } => {
+                self.view_disks(disks, *selected)
             }
-            Step::SelectDisk {
-                disks, selected, ..
-            } => self.view_disks(disks, selected.as_ref()),
-            Step::Flashing { progress } => {
-                column![
-                    text(t(self.lang, Text::Flashing)).size(18),
-                    progress_bar(0.0..=100.0, *progress),
-                    text(format!("{progress:.0}%")).size(14),
-                ]
-                .spacing(12)
-                .into()
+            Step::RunningRpiboot => {
+                column![text(t(self.lang, Text::RpibootRunning)).size(18),].into()
             }
-            Step::Done => {
-                column![
-                    text(t(self.lang, Text::Done)).size(24),
-                    text(t(self.lang, Text::DoneHint)).size(16),
-                ]
-                .spacing(8)
-                .into()
-            }
+            Step::Flashing { progress } => column![
+                text(t(self.lang, Text::Flashing)).size(18),
+                progress_bar(0.0..=100.0, *progress),
+                text(format!("{progress:.0}%")).size(14),
+            ]
+            .spacing(12)
+            .into(),
+            Step::Done => column![
+                text(t(self.lang, Text::Done)).size(24),
+                text(t(self.lang, Text::DoneHint)).size(16),
+            ]
+            .spacing(8)
+            .into(),
         };
 
-        let mut layout = column![header].spacing(20);
+        let mut layout = column![title].spacing(20);
 
         if matches!(self.step, Step::Loading | Step::SelectRelease) {
+            let channel_row = row![
+                channel_button(self.channel, Channel::Production, self.lang),
+                channel_button(self.channel, Channel::Development, self.lang),
+            ]
+            .spacing(8);
             layout = layout.push(channel_row);
         }
 
@@ -252,12 +251,12 @@ impl Installer {
             let is_selected = self.selected_tag == Some(i);
             let label = row![
                 text(tag.as_str()).size(16),
-                    Space::new().width(Fill),
-                    if is_selected {
-                        text("\u{2713}").size(16)
-                    } else {
-                        text("")
-                    },
+                Space::new().width(Fill),
+                if is_selected {
+                    text("\u{2713}").size(16)
+                } else {
+                    text("")
+                },
             ]
             .align_y(Center);
 
@@ -290,48 +289,77 @@ impl Installer {
         col.into()
     }
 
-    fn view_disks(&self, disks: &[Disk], selected: Option<&usize>) -> Element<'_, Message> {        let warning = container(text(format!(
-            "\u{26a0}\u{fe0f} {}",
-            t(self.lang, Text::DataLossWarning)
-        )))
+    fn view_disks(&self, disks: &[Disk], selected: Option<usize>) -> Element<'_, Message> {
+        let warning = container(
+            text(format!(
+                "\u{26a0}\u{fe0f} {}",
+                t(self.lang, Text::DataLossWarning)
+            ))
+            .size(14),
+        )
         .padding(8);
 
-        let mut list = column![];
+        let mut col =
+            column![warning, text(t(self.lang, Text::SelectDisk)).size(18)].spacing(12);
 
-        for (i, d) in disks.iter().enumerate() {
-            let is_selected = selected == Some(&i);
-            let label = row![
-                column![
-                    text(d.name.clone()).size(16),
+        if disks.is_empty() {
+            col = col.push(text("").size(14));
+        } else {
+            let mut list = column![];
+
+            for (i, d) in disks.iter().enumerate() {
+                let is_selected = selected == Some(i);
+                let mut info = row![
                     text(format!("{} GB", d.size_gb)).size(12),
-                ],
-                Space::new().width(Fill),
-                if is_selected {
-                    text("\u{2713}")
-                } else {
-                    text("")
-                },
-            ]
-            .align_y(Center);
+                ];
 
-            list = list.push(
-                button(label)
-                    .width(Fill)
-                    .style(if is_selected {
-                        button::primary
+                if d.removable {
+                    info = info.push(text("(removable)").size(12));
+                }
+
+                let label = row![
+                    column![text(d.name.clone()).size(16), info],
+                    Space::new().width(Fill),
+                    if is_selected {
+                        text("\u{2713}")
                     } else {
-                        button::secondary
-                    })
-                    .on_press(Message::DiskSelected(i)),
+                        text("")
+                    },
+                ]
+                .align_y(Center);
+
+                list = list.push(
+                    button(label)
+                        .width(Fill)
+                        .style(if is_selected {
+                            button::primary
+                        } else {
+                            button::secondary
+                        })
+                        .on_press(Message::DiskSelected(i)),
+                );
+            }
+
+            col = col.push(scrollable(list.spacing(4)).height(200));
+        }
+
+        let mut actions = row![
+            button(t(self.lang, Text::Refresh))
+                .style(button::secondary)
+                .on_press(Message::DiskRefreshClicked),
+            Space::new().width(Fill),
+        ]
+        .spacing(8);
+
+        if usbboot::is_available() {
+            actions = actions.push(
+                button(t(self.lang, Text::Rpiboot))
+                    .style(button::secondary)
+                    .on_press(Message::RpibootClicked),
             );
         }
 
-        let mut col = column![
-            warning,
-            text(t(self.lang, Text::SelectDisk)).size(18),
-            scrollable(list.spacing(4)).height(200),
-        ]
-        .spacing(12);
+        col = col.push(actions);
 
         if selected.is_some() {
             col = col.push(
@@ -353,12 +381,29 @@ impl Installer {
         };
 
         let registry = self.channel.registry().to_string();
-        let image_path = std::env::temp_dir().join(format!("caustic-os-{tag}.img"));
 
-        self.step = Step::Downloading {
-            progress: 0.0,
-            image_path: image_path.clone(),
+        let Some(cache_dir) = cache_dir() else {
+            self.error = Some("Could not determine cache directory".to_string());
+            return Task::none();
         };
+
+        let image_path = cache_dir.join(format!("caustic-os-{tag}.img"));
+
+        if image_path.exists()
+            && std::fs::metadata(&image_path)
+                .is_ok_and(|m| m.len() > 0)
+        {
+            self.image_path = Some(image_path);
+            let disks = disk::list_disks();
+            self.step = Step::SelectDisk {
+                disks,
+                selected: None,
+            };
+            return Task::none();
+        }
+
+        self.image_path = Some(image_path.clone());
+        self.step = Step::Downloading { progress: 0.0 };
 
         let straw = run_with_progress(move |progress| async move {
             let manifest = caustic_oci::fetch_manifest(&registry, &tag).await?;
@@ -370,27 +415,34 @@ impl Installer {
         Task::sip(straw, Message::DownloadProgress, Message::DownloadFinished)
     }
 
+    fn start_rpiboot(&mut self) -> Task<Message> {
+        if !usbboot::is_available() {
+            self.error = Some(t(self.lang, Text::RpibootNotFound).to_string());
+            return Task::none();
+        }
+
+        self.step = Step::RunningRpiboot;
+        Task::perform(
+            async { usbboot::run_rpiboot().await.map_err(|e| e.to_string()) },
+            Message::RpibootFinished,
+        )
+    }
+
     fn start_flash(&mut self) -> Task<Message> {
-        let Step::SelectDisk {
-            image_path,
-            disks,
-            selected,
-        } = &self.step
-        else {
+        let Step::SelectDisk { disks, selected } = &self.step else {
+            return Task::none();
+        };
+        let Some(index) = *selected else {
+            return Task::none();
+        };
+        let Some(disk) = disks.get(index) else {
+            return Task::none();
+        };
+        let Some(image) = self.image_path.clone() else {
             return Task::none();
         };
 
-        let Some(index) = selected else {
-            return Task::none();
-        };
-
-        let Some(disk) = disks.get(*index) else {
-            return Task::none();
-        };
-
-        let image = image_path.clone();
         let target = disk.path.clone();
-
         self.step = Step::Flashing { progress: 0.0 };
 
         let straw = run_with_progress(move |progress| flash::flash_image(image, target, progress));
@@ -441,6 +493,13 @@ fn load_tags(channel: Channel) -> Task<Message> {
         },
         Message::TagsLoaded,
     )
+}
+
+fn cache_dir() -> Option<PathBuf> {
+    let dirs = directories::ProjectDirs::from("systems", "stargrid", "caustic")?;
+    let cache = dirs.cache_dir().to_path_buf();
+    std::fs::create_dir_all(&cache).ok()?;
+    Some(cache)
 }
 
 fn run_with_progress<F, Fut, E>(f: F) -> impl Straw<(), f32, String>
