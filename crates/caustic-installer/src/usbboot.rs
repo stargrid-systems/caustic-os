@@ -11,7 +11,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotFound => write!(f, "rpiboot not found"),
-            Self::NoElevator => write!(f, "no privilege escalation tool available"),
+            Self::NoElevator => write!(f, "pkexec is required for privilege escalation"),
             Self::ExecutionFailed(msg) => write!(f, "rpiboot failed: {msg}"),
         }
     }
@@ -90,12 +90,6 @@ fn build_elevated_command(binary: &str) -> Result<tokio::process::Command, Error
     if which::which("pkexec").is_ok() {
         let mut cmd = tokio::process::Command::new("pkexec");
         cmd.arg(binary);
-        return Ok(cmd);
-    }
-
-    if which::which("sudo").is_ok() {
-        let mut cmd = tokio::process::Command::new("sudo");
-        cmd.arg("-n").arg(binary);
         return Ok(cmd);
     }
 

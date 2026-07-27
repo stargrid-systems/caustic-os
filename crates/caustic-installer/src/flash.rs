@@ -92,17 +92,14 @@ async fn flash_elevated(
     file_size: u64,
     progress: Arc<dyn Fn(u64, u64) + Send + Sync>,
 ) -> Result<(), Error> {
-    let elevator = find_elevator().ok_or_else(|| {
-        Error("Neither pkexec nor sudo is available to elevate dd".to_string())
-    })?;
+    if which::which("pkexec").is_err() {
+        return Err(Error("pkexec is required to flash without root".to_string()));
+    }
 
     let if_arg = format!("if={}", image.display());
     let of_arg = format!("of={target}");
 
-    let mut cmd = tokio::process::Command::new(elevator);
-    if elevator == "sudo" {
-        cmd.arg("-n");
-    }
+    let mut cmd = tokio::process::Command::new("pkexec");
     cmd.args(["dd", &if_arg, &of_arg, "bs=4M", "conv=fsync", "status=progress"])
         .stderr(Stdio::piped())
         .stdout(Stdio::null());
@@ -159,17 +156,6 @@ async fn flash_elevated(
     }
 
     Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn find_elevator() -> Option<&'static str> {
-    if which::which("pkexec").is_ok() {
-        Some("pkexec")
-    } else if which::which("sudo").is_ok() {
-        Some("sudo")
-    } else {
-        None
-    }
 }
 
 fn parse_dd_progress(s: &str) -> Option<u64> {
