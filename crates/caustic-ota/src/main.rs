@@ -17,11 +17,11 @@ const FACTORY_RESET_SENTINEL: &str = "/persist/.factory-reset";
 #[command(name = "caustic-ota", version, about = "Caustic OS OTA update daemon")]
 struct Cli {
     #[command(subcommand)]
-    command: Command_,
+    command: Commands,
 }
 
 #[derive(Subcommand)]
-enum Command_ {
+enum Commands {
     Check {
         #[arg(long, default_value = "ghcr.io/stargrid-systems/caustic-os")]
         registry: String,
@@ -54,13 +54,13 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     match cli.command {
-        Command_::Check { registry, tag } => check(&registry, &tag).await,
-        Command_::Update {
+        Commands::Check { registry, tag } => check(&registry, &tag).await,
+        Commands::Update {
             registry,
             tag,
             force,
         } => update(&registry, &tag, force).await,
-        Command_::FactoryReset => factory_reset(),
+        Commands::FactoryReset => factory_reset(),
     }
 }
 
