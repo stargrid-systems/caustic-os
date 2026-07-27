@@ -260,7 +260,6 @@ impl Installer {
         container(layout)
             .width(Fill)
             .height(Fill)
-            .max_width(560)
             .center_x(Fill)
             .padding(40)
             .into()

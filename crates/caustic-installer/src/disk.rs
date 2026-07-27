@@ -52,11 +52,11 @@ mod lsblk {
         }
 
         fn is_removable(&self) -> bool {
-            self.rm == "1" || self.hotplug == "1" || self.is_virtual()
+            self.rm == "1" || self.hotplug == "1"
         }
 
         fn is_system(&self) -> bool {
-            !self.is_removable() && !self.is_virtual()
+            !self.is_removable()
         }
     }
 
@@ -86,6 +86,7 @@ mod lsblk {
             .filter(|d| d.r#type.as_deref() == Some("disk"))
             .filter(|d| !is_skip_device(&d.name))
             .filter(|d| !d.is_system())
+            .filter(|d| !d.is_virtual())
             .map(|d| {
                 let is_removable = d.is_removable();
                 let device = d.name;

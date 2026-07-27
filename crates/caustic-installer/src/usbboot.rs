@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::Stdio;
 
 #[derive(Debug)]
@@ -34,9 +35,7 @@ pub fn is_available() -> bool {
 
 pub async fn run_rpiboot() -> Result<(), Error> {
     let binary = which::which(binary_name())
-        .map_err(|_| Error::NotFound)?
-        .to_string_lossy()
-        .into_owned();
+        .map_err(|_| Error::NotFound)?;
 
     match run_command(&mut tokio::process::Command::new(&binary)).await {
         Ok(()) => Ok(()),
@@ -86,7 +85,7 @@ fn should_retry_elevated(err: &Error) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn build_elevated_command(binary: &str) -> Result<tokio::process::Command, Error> {
+fn build_elevated_command(binary: &Path) -> Result<tokio::process::Command, Error> {
     if which::which("pkexec").is_ok() {
         let mut cmd = tokio::process::Command::new("pkexec");
         cmd.arg(binary);
