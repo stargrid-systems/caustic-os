@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Caustic Installer
+Comment=Flash Caustic OS images onto CM4 modules
+Exec=caustic-installer
+Icon=caustic-installer
+Categories=Utility;System;
+Terminal=false
+StartupWMClass=caustic-installer
