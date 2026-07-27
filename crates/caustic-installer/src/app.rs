@@ -28,6 +28,13 @@ impl Channel {
             Self::Development => REGISTRY_DEV,
         }
     }
+
+    const fn slug(self) -> &'static str {
+        match self {
+            Self::Production => "prod",
+            Self::Development => "dev",
+        }
+    }
 }
 
 pub struct Installer {
@@ -387,7 +394,9 @@ impl Installer {
             return Task::none();
         };
 
-        let image_path = cache_dir.join(format!("caustic-os-{tag}.img"));
+        let image_path = cache_dir
+            .join(self.channel.slug())
+            .join(format!("caustic-os-{tag}.img"));
 
         if image_path.exists()
             && std::fs::metadata(&image_path)
