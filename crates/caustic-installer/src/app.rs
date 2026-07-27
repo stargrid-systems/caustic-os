@@ -255,7 +255,7 @@ impl Installer {
         }
 
         layout = layout.push(footer);
-        layout = layout.spacing(16);
+        layout = layout.width(Fill).max_width(560).height(Fill).spacing(16);
 
         container(layout)
             .width(Fill)
