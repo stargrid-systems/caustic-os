@@ -95,7 +95,7 @@ fn build_elevated_command(binary: &str) -> Result<tokio::process::Command, Error
 
     if which::which("sudo").is_ok() {
         let mut cmd = tokio::process::Command::new("sudo");
-        cmd.arg(binary);
+        cmd.arg("-n").arg(binary);
         return Ok(cmd);
     }
 

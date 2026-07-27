@@ -100,6 +100,9 @@ async fn flash_elevated(
     let of_arg = format!("of={target}");
 
     let mut cmd = tokio::process::Command::new(elevator);
+    if elevator == "sudo" {
+        cmd.arg("-n");
+    }
     cmd.args(["dd", &if_arg, &of_arg, "bs=4M", "conv=fsync", "status=progress"])
         .stderr(Stdio::piped())
         .stdout(Stdio::null());
