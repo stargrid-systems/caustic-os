@@ -317,15 +317,16 @@ impl Installer {
             for (i, d) in disks.iter().enumerate() {
                 let is_selected = selected == Some(i);
                 let mut info = row![
-                    text(format!("{} GB", d.size_gb)).size(12),
+                    text(format!("{} GB", d.size_gb())).size(12),
+                    text(d.bus_type.clone()).size(12),
                 ];
 
-                if d.removable {
+                if d.is_removable {
                     info = info.push(text(t(self.lang, Text::Removable)).size(12));
                 }
 
                 let label = row![
-                    column![text(d.name.clone()).size(16), info],
+                    column![text(d.description.clone()).size(16), info],
                     Space::new().width(Fill),
                     if is_selected {
                         text("\u{2713}")
@@ -455,7 +456,7 @@ impl Installer {
             return Task::none();
         };
 
-        let target = disk.path.clone();
+        let target = disk.device.clone();
         self.step = Step::Flashing { progress: 0.0 };
 
         let straw = run_with_progress(move |progress| flash::flash_image(image, target, progress));

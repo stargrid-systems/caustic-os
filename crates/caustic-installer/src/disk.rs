@@ -1,279 +1,324 @@
 pub struct Disk {
-    pub name: String,
-    pub path: String,
-    pub size_gb: u64,
-    pub removable: bool,
+    pub device: String,
+    pub description: String,
+    pub size: u64,
+    pub is_removable: bool,
+    pub bus_type: String,
 }
 
-const SECTOR_SIZE: u64 = 512;
 const BYTES_PER_GB: u64 = 1_000_000_000;
 
+impl Disk {
+    #[must_use]
+    pub const fn size_gb(&self) -> u64 {
+        self.size / BYTES_PER_GB
+    }
+}
+
 #[cfg(target_os = "linux")]
-pub fn list_disks() -> Vec<Disk> {
-    let Ok(entries) = std::fs::read_dir("/sys/block") else {
-        return Vec::new();
-    };
+mod lsblk {
+    use super::Disk;
+    use std::process::Command;
 
-    let boot_disks = expand_device_paths(&read_boot_disks());
-    let swap_disks = expand_device_paths(&read_swap_disks());
+    #[derive(serde::Deserialize)]
+    struct Output {
+        blockdevices: Vec<Device>,
+    }
 
-    let mut disks = Vec::new();
+    #[derive(serde::Deserialize)]
+    struct Device {
+        name: String,
+        #[serde(default)]
+        size: String,
+        #[serde(default)]
+        rm: String,
+        #[serde(default)]
+        hotplug: String,
+        #[serde(default)]
+        model: Option<String>,
+        #[serde(default)]
+        vendor: Option<String>,
+        #[serde(default)]
+        tran: Option<String>,
+        #[serde(default)]
+        r#type: Option<String>,
+        #[serde(default)]
+        subsystems: Option<String>,
+    }
 
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-
-        if is_virtual_device(&name) {
-            continue;
+    impl Device {
+        fn is_virtual(&self) -> bool {
+            self.subsystems.as_deref() == Some("block")
         }
 
-        if boot_disks.iter().any(|d| device_matches_block(d, &name)) {
-            continue;
+        fn is_removable(&self) -> bool {
+            self.rm == "1" || self.hotplug == "1" || self.is_virtual()
         }
 
-        if swap_disks.iter().any(|d| device_matches_block(d, &name)) {
-            continue;
+        fn is_system(&self) -> bool {
+            !self.is_removable() && !self.is_virtual()
         }
+    }
 
-        let dev = format!("/dev/{name}");
-        let size_path = format!("/sys/block/{name}/size");
+    pub fn list() -> Vec<Disk> {
+        let output = Command::new("lsblk")
+            .args([
+                "--bytes",
+                "--json",
+                "--paths",
+                "--output",
+                "name,size,rm,hotplug,model,vendor,tran,type,subsystems",
+            ])
+            .output();
 
-        let Ok(size_str) = std::fs::read_to_string(&size_path) else {
-            continue;
+        let Ok(output) = output else {
+            return Vec::new();
         };
 
-        let sectors: u64 = size_str.trim().parse().unwrap_or_default();
-        let size_gb = sectors * SECTOR_SIZE / BYTES_PER_GB;
+        let parsed: Output = match serde_json::from_slice(&output.stdout) {
+            Ok(v) => v,
+            Err(_) => return Vec::new(),
+        };
 
-        if size_gb == 0 {
-            continue;
-        }
+        let mut disks: Vec<Disk> = parsed
+            .blockdevices
+            .into_iter()
+            .filter(|d| d.r#type.as_deref() == Some("disk"))
+            .filter(|d| !is_skip_device(&d.name))
+            .filter(|d| !d.is_system())
+            .map(|d| {
+                let is_removable = d.is_removable();
+                let device = d.name;
+                Disk {
+                    bus_type: d
+                        .tran
+                        .as_deref()
+                        .unwrap_or("UNKNOWN")
+                        .to_uppercase(),
+                    description: build_description(
+                        d.vendor.as_deref().unwrap_or(""),
+                        d.model.as_deref().unwrap_or(""),
+                        &device,
+                    ),
+                    device,
+                    is_removable,
+                    size: d.size.parse().unwrap_or(0),
+                }
+            })
+            .filter(|d| d.size > 0)
+            .collect();
 
-        let model = read_sys_block(&name, "device/model").unwrap_or_default();
+        disks.sort_by_key(|d| !d.is_removable);
+        disks
+    }
 
-        let removable = read_sys_block(&name, "removable")
-            .is_some_and(|s| s == "1");
+    fn is_skip_device(name: &str) -> bool {
+        let dev = name.trim_start_matches("/dev/");
+        dev.starts_with("loop")
+            || dev.starts_with("ram")
+            || dev.starts_with("sr")
+            || dev.starts_with("zram")
+    }
 
-        let vendor = read_sys_block(&name, "device/vendor").unwrap_or_default();
-
-        let label = if model.is_empty() {
-            name.clone()
-        } else if vendor.is_empty() {
-            format!("{name} - {model}")
+    fn build_description(vendor: &str, model: &str, name: &str) -> String {
+        let parts: Vec<&str> = [vendor.trim(), model.trim()]
+            .iter()
+            .filter(|s| !s.is_empty())
+            .copied()
+            .collect();
+        if parts.is_empty() {
+            name.trim_start_matches("/dev/").to_string()
         } else {
-            format!("{name} - {vendor} {model}")
-        };
-
-        disks.push(Disk {
-            name: label,
-            path: dev,
-            size_gb,
-            removable,
-        });
-    }
-
-    disks.sort_by_key(|d| !d.removable);
-    disks
-}
-
-#[cfg(target_os = "linux")]
-fn is_virtual_device(name: &str) -> bool {
-    const SKIP_PREFIXES: &[&str] = &["loop", "ram", "zram", "sr", "md", "dm-", "nvme-fabrics"];
-    SKIP_PREFIXES.iter().any(|prefix| name.starts_with(prefix))
-}
-
-#[cfg(target_os = "linux")]
-fn read_sys_block(name: &str, file: &str) -> Option<String> {
-    std::fs::read_to_string(format!("/sys/block/{name}/{file}"))
-        .ok()
-        .map(|s| s.trim().to_string())
-}
-
-#[cfg(target_os = "linux")]
-fn read_boot_disks() -> Vec<String> {
-    let critical_mounts = ["/", "/boot", "/boot/efi", "/usr", "/var"];
-    let mut devices = Vec::new();
-
-    if let Ok(mounts) = std::fs::read_to_string("/proc/mounts") {
-        for line in mounts.lines() {
-            let mut parts = line.split_whitespace();
-            let Some(source) = parts.next() else { continue };
-            let Some(mountpoint) = parts.next() else { continue };
-
-            if critical_mounts.contains(&mountpoint) && source.starts_with("/dev/") {
-                devices.push(source.to_string());
-            }
+            parts.join(" ")
         }
     }
-
-    devices
 }
 
-#[cfg(target_os = "linux")]
-fn read_swap_disks() -> Vec<String> {
-    let mut devices = Vec::new();
+#[cfg(target_os = "macos")]
+mod diskutil {
+    use super::Disk;
+    use std::process::Command;
 
-    if let Ok(swaps) = std::fs::read_to_string("/proc/swaps") {
-        for line in swaps.lines().skip(1) {
-            if let Some(source) = line.split_whitespace().next()
-                && source.starts_with("/dev/")
-            {
-                devices.push(source.to_string());
-            }
-        }
-    }
-
-    devices
-}
-
-#[cfg(target_os = "linux")]
-fn expand_device_paths(devices: &[String]) -> Vec<String> {
-    let mut expanded = Vec::new();
-    for dev in devices {
-        let canonical = std::fs::canonicalize(dev)
-            .map_or_else(|_| dev.clone(), |p| p.to_string_lossy().into_owned());
-
-        if !expanded.contains(&canonical) {
-            expanded.push(canonical.clone());
-        }
-
-        if let Some(base) = canonical.strip_prefix("/dev/")
-            && let Ok(slaves) = std::fs::read_dir(format!("/sys/block/{base}/slaves"))
-        {
-            for entry in slaves.flatten() {
-                let slave = format!("/dev/{}", entry.file_name().to_string_lossy());
-                if !expanded.contains(&slave) {
-                    expanded.push(slave);
+    pub fn list() -> Vec<Disk> {
+        let mut disk_names = Vec::new();
+        if let Ok(entries) = std::fs::read_dir("/dev") {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with("disk") && !name.contains('s') {
+                    disk_names.push(name);
                 }
             }
         }
+        disk_names.sort();
+
+        let mut disks = Vec::new();
+        for disk_name in &disk_names {
+            let device = format!("/dev/{disk_name}");
+            if let Some(disk) = info(&device) {
+                disks.push(disk);
+            }
+        }
+
+        disks.sort_by_key(|d| !d.is_removable);
+        disks
     }
-    expanded
+
+    fn info(device: &str) -> Option<Disk> {
+        let output = Command::new("diskutil")
+            .args(["info", "-plist", device])
+            .output()
+            .ok()?;
+
+        let plist = plist::Value::from_reader(std::io::Cursor::new(output.stdout))?;
+        let dict = plist.as_dictionary()?;
+
+        let size = dict
+            .get("TotalSize")?
+            .as_unsigned_integer()?;
+
+        if size == 0 {
+            return None;
+        }
+
+        let internal = dict
+            .get("Internal")
+            .and_then(plist::Value::as_boolean)
+            .unwrap_or(true);
+
+        let removable = dict
+            .get("Removable")
+            .and_then(plist::Value::as_boolean)
+            .unwrap_or(false);
+
+        let ejectable = dict
+            .get("Ejectable")
+            .and_then(plist::Value::as_boolean)
+            .unwrap_or(false);
+
+        let is_removable = removable || ejectable;
+
+        if internal && !is_removable {
+            return None;
+        }
+
+        let bus_type = dict
+            .get("BusProtocol")
+            .and_then(plist::Value::as_string)
+            .unwrap_or("Unknown")
+            .to_string();
+
+        let description = dict
+            .get("MediaName")
+            .and_then(plist::Value::as_string)
+            .unwrap_or(device)
+            .to_string();
+
+        let raw = device.replace("/dev/disk", "/dev/rdisk");
+
+        Some(Disk {
+            device: raw,
+            description,
+            size,
+            is_removable,
+            bus_type,
+        })
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod win_disk {
+    use super::Disk;
+    use std::process::Command;
+
+    pub fn list() -> Vec<Disk> {
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "$sysDisks = @(Get-Partition -ErrorAction SilentlyContinue \
+                 | Where-Object { $_.IsBoot -or $_.IsSystem } \
+                 | Select-Object -ExpandProperty DiskNumber -Unique); \
+                 Get-PhysicalDisk \
+                 | ForEach-Object { [PSCustomObject]@{ \
+                     DeviceId=$_.DeviceId; \
+                     FriendlyName=$_.FriendlyName; \
+                     Size=$_.Size; \
+                     BusType=$_.BusType.ToString(); \
+                     IsSystem=($sysDisks -contains ([int]$_.DeviceId)) \
+                 } } | ConvertTo-Json -Compress",
+            ])
+            .output();
+
+        let Ok(output) = output else {
+            return Vec::new();
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let value: serde_json::Value = match serde_json::from_str(&stdout) {
+            Ok(v) => v,
+            Err(_) => return Vec::new(),
+        };
+
+        let entries = match value {
+            serde_json::Value::Array(arr) => arr,
+            other => vec![other],
+        };
+
+        let mut disks = Vec::new();
+        for entry in entries {
+            let Some(device_id) = entry.get("DeviceId").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let friendly_name = entry
+                .get("FriendlyName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown");
+            let size = entry.get("Size").and_then(|v| v.as_u64()).unwrap_or(0);
+            let bus_type = entry
+                .get("BusType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown");
+            let is_system = entry
+                .get("IsSystem")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            if is_system || size == 0 {
+                continue;
+            }
+
+            let is_removable = matches!(
+                bus_type,
+                "USB" | "SD" | "MMC" | "1394" | "FileBackedVirtual"
+            );
+
+            disks.push(Disk {
+                device: format!("\\\\.\\PhysicalDrive{device_id}"),
+                description: friendly_name.to_string(),
+                size,
+                is_removable,
+                bus_type: bus_type.to_string(),
+            });
+        }
+
+        disks.sort_by_key(|d| !d.is_removable);
+        disks
+    }
 }
 
 #[cfg(target_os = "linux")]
-fn device_matches_block(dev_path: &str, block_name: &str) -> bool {
-    let Some(base) = dev_path.strip_prefix("/dev/") else {
-        return false;
-    };
-    if base == block_name {
-        return true;
-    }
-    let Some(rest) = base.strip_prefix(block_name) else {
-        return false;
-    };
-    !rest.is_empty() && rest.starts_with(|c: char| c.is_ascii_digit() || c == 'p')
-}
-
-#[cfg(target_os = "windows")]
 pub fn list_disks() -> Vec<Disk> {
-    use std::process::Command;
-
-    let output = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "Get-PhysicalDisk | ForEach-Object { \"$($_.DeviceId)|$($_.FriendlyName)|$($_.Size)|$($_.BusType)\" }",
-        ])
-        .output();
-
-    let Ok(output) = output else {
-        return Vec::new();
-    };
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let boot_disk = windows_boot_disk_number();
-
-    let mut disks = Vec::new();
-
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split('|').collect();
-        if parts.len() != 4 {
-            continue;
-        }
-
-        let id = parts[0].trim();
-        let name = parts[1].trim();
-        let size: u64 = parts[2].trim().parse().unwrap_or(0);
-        let bus = parts[3].trim();
-
-        if id == boot_disk {
-            continue;
-        }
-
-        let size_gb = size / BYTES_PER_GB;
-        if size_gb == 0 {
-            continue;
-        }
-
-        disks.push(Disk {
-            name: format!("{name} ({bus})"),
-            path: format!("\\\\.\\PhysicalDrive{id}"),
-            size_gb,
-            removable: bus == "USB",
-        });
-    }
-
-    disks
-}
-
-#[cfg(target_os = "windows")]
-fn windows_boot_disk_number() -> String {
-    use std::process::Command;
-
-    let output = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "(Get-Partition | Where-Object { $_.IsBoot -or $_.IsSystem } | Select-Object -First 1 -ExpandProperty DiskNumber)",
-        ])
-        .output();
-
-    let Ok(output) = output else {
-        return String::new();
-    };
-
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_string()
+    lsblk::list()
 }
 
 #[cfg(target_os = "macos")]
 pub fn list_disks() -> Vec<Disk> {
-    use std::process::Command;
+    diskutil::list()
+}
 
-    let output = Command::new("diskutil")
-        .args(["list", "-plist"])
-        .output();
-
-    let Ok(output) = output else {
-        return Vec::new();
-    };
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let mut disks = Vec::new();
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("<key>WholeDisk</key>") {
-            let _ = rest;
-        }
-        if let Some(rest) = trimmed.strip_prefix("<string>disk") {
-            let disk_num: String = rest
-                .chars()
-                .take_while(|c| c.is_ascii_digit())
-                .collect();
-            if !disk_num.is_empty() {
-                disks.push(Disk {
-                    name: format!("disk{disk_num}"),
-                    path: format!("/dev/rdisk{disk_num}"),
-                    size_gb: 0,
-                    removable: false,
-                });
-            }
-        }
-    }
-
-    disks
+#[cfg(target_os = "windows")]
+pub fn list_disks() -> Vec<Disk> {
+    win_disk::list()
 }

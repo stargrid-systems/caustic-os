@@ -159,12 +159,7 @@ async fn flash_elevated(
 }
 
 fn parse_dd_progress(s: &str) -> Option<u64> {
-    let bytes_idx = s.find(" bytes")?;
-    s[..bytes_idx]
-        .split_whitespace()
-        .last()?
-        .parse()
-        .ok()
+    s.split_whitespace().next()?.parse().ok()
 }
 
 #[derive(Debug)]
