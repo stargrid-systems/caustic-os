@@ -33,8 +33,10 @@ pub fn extract_version(manifest: &OciImageManifest) -> Result<String, Error> {
 /// Returns [`Error::ChecksumMismatch`] if a checksum does not match.
 pub fn verify_sha256sums(dir: &Path) -> Result<(), Error> {
     let sums_path = dir.join("SHA256SUMS");
-    let Ok(content) = std::fs::read_to_string(&sums_path) else {
-        return Ok(());
+    let content = match std::fs::read_to_string(&sums_path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(Error::Io(e.to_string())),
     };
 
     for line in content.lines() {
@@ -46,7 +48,8 @@ pub fn verify_sha256sums(dir: &Path) -> Result<(), Error> {
             .next()
             .ok_or_else(|| Error::Other("malformed SHA256SUMS line".to_string()))?;
         let path = dir.join(name);
-        let bytes = std::fs::read(&path).map_err(|e| Error::Io(e.to_string()))?;
+        let bytes = std::fs::read(&path)
+            .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
 
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
