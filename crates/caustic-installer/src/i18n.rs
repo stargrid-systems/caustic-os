@@ -95,12 +95,10 @@ pub const fn t(lang: Lang, text: Text) -> &'static str {
         (Lang::De, Text::Error) => "Fehler",
 
         (Lang::En, Text::RpibootNotFound) => {
-            "rpiboot was not found.\n\
-             Install it from https://github.com/raspberrypi/usbboot"
+            "rpiboot was not found.\nInstall it from https://github.com/raspberrypi/usbboot"
         }
         (Lang::De, Text::RpibootNotFound) => {
-            "rpiboot wurde nicht gefunden.\n\
-             Zu finden unter https://github.com/raspberrypi/usbboot"
+            "rpiboot wurde nicht gefunden.\nZu finden unter https://github.com/raspberrypi/usbboot"
         }
 
         (Lang::En, Text::Removable) => "(removable)",

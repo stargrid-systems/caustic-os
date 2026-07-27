@@ -2,16 +2,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use iced::task::{sipper, Straw};
-use iced::widget::{
-    button, column, container, progress_bar, row, scrollable, text, Space,
-};
+use iced::task::{Straw, sipper};
+use iced::widget::{Space, button, column, container, progress_bar, row, scrollable, text};
 use iced::{Center, Element, Fill, Task};
 
 use crate::disk::{self, Disk};
-use crate::flash;
-use crate::i18n::{t, Lang, Text};
-use crate::usbboot;
+use crate::i18n::{Lang, Text, t};
+use crate::{flash, usbboot};
 
 const REGISTRY_PROD: &str = "ghcr.io/stargrid-systems/caustic-os";
 const REGISTRY_DEV: &str = "ghcr.io/stargrid-systems/caustic-os-dev";
@@ -70,13 +67,17 @@ pub enum Message {
 enum Step {
     Loading,
     SelectRelease,
-    Downloading { progress: f32 },
+    Downloading {
+        progress: f32,
+    },
     SelectDisk {
         disks: Vec<Disk>,
         selected: Option<usize>,
     },
     RunningRpiboot,
-    Flashing { progress: f32 },
+    Flashing {
+        progress: f32,
+    },
     Done,
 }
 
@@ -138,8 +139,9 @@ impl Installer {
                 }
                 Task::none()
             }
-            Message::DownloadFinished(Ok(()))
-            | Message::RpibootFinished(Ok(())) => self.enter_disk_selection(),
+            Message::DownloadFinished(Ok(())) | Message::RpibootFinished(Ok(())) => {
+                self.enter_disk_selection()
+            }
             Message::DiskSelected(index) => {
                 if let Step::SelectDisk { selected, .. } = &mut self.step {
                     *selected = Some(index);
@@ -190,9 +192,7 @@ impl Installer {
     fn handle_error(&mut self, err: String) {
         self.error = Some(err);
         match &self.step {
-            Step::Flashing { .. }
-            | Step::SelectDisk { .. }
-            | Step::RunningRpiboot => {
+            Step::Flashing { .. } | Step::SelectDisk { .. } | Step::RunningRpiboot => {
                 let disks = get_disks(self.simulate);
                 self.step = Step::SelectDisk {
                     disks,
@@ -259,9 +259,7 @@ impl Installer {
         let mut layout = column![header, body];
 
         if let Some(err) = &self.error {
-            layout = layout.push(
-                text(format!("{}: {err}", t(self.lang, Text::Error))).size(14),
-            );
+            layout = layout.push(text(format!("{}: {err}", t(self.lang, Text::Error))).size(14));
         }
 
         layout = layout.push(footer);
@@ -293,9 +291,7 @@ impl Installer {
 
     fn view_body(&self) -> Element<'_, Message> {
         match &self.step {
-            Step::Loading => {
-                column![text(t(self.lang, Text::Loading)).size(16)].into()
-            }
+            Step::Loading => column![text(t(self.lang, Text::Loading)).size(16)].into(),
             Step::SelectRelease => self.view_releases(),
             Step::Downloading { progress } => column![
                 text(t(self.lang, Text::Downloading)).size(18),
@@ -492,9 +488,7 @@ impl Installer {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        if image_path.exists()
-            && std::fs::metadata(&image_path).is_ok_and(|m| m.len() > 0)
-        {
+        if image_path.exists() && std::fs::metadata(&image_path).is_ok_and(|m| m.len() > 0) {
             self.image_path = Some(image_path);
             let disks = get_disks(self.simulate);
             self.step = Step::SelectDisk {

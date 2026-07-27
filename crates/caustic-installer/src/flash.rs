@@ -102,16 +102,25 @@ async fn flash_elevated(
     progress: Arc<dyn Fn(u64, u64) + Send + Sync>,
 ) -> Result<(), Error> {
     if which::which("pkexec").is_err() {
-        return Err(Error("pkexec is required to flash without root".to_string()));
+        return Err(Error(
+            "pkexec is required to flash without root".to_string(),
+        ));
     }
 
     let if_arg = format!("if={}", image.display());
     let of_arg = format!("of={target}");
 
     let mut cmd = tokio::process::Command::new("pkexec");
-    cmd.args(["dd", &if_arg, &of_arg, "bs=4M", "conv=fsync", "status=progress"])
-        .stderr(Stdio::piped())
-        .stdout(Stdio::null());
+    cmd.args([
+        "dd",
+        &if_arg,
+        &of_arg,
+        "bs=4M",
+        "conv=fsync",
+        "status=progress",
+    ])
+    .stderr(Stdio::piped())
+    .stdout(Stdio::null());
 
     let mut child = cmd
         .spawn()

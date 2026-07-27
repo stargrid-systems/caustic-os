@@ -5,7 +5,9 @@ mod verify;
 
 pub use oci_client::manifest::{OciDescriptor, OciImageManifest};
 
-pub use self::client::{fetch_manifest, find_layer_by_suffix, list_tags, pull_blob, pull_blob_streaming};
+pub use self::client::{
+    fetch_manifest, find_layer_by_suffix, list_tags, pull_blob, pull_blob_streaming,
+};
 pub use self::verify::{extract_version, verify_sha256sums};
 
 #[derive(Debug)]

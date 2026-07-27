@@ -2,11 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
+use caustic_oci::{self, OciImageManifest};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-
-use caustic_oci::{self, OciImageManifest};
 
 const STAGING_DIR: &str = "/var/lib/caustic-ota/staging";
 const STATE_FILE: &str = "/var/lib/caustic-ota/state.json";
@@ -162,7 +161,9 @@ async fn pull_layers(
             .ok_or_else(|| anyhow!("layer missing title annotation"))?;
 
         if name.contains('/') || name.contains("..") || name.contains(std::path::MAIN_SEPARATOR) {
-            return Err(anyhow!("layer title contains unsafe path characters: {name}"));
+            return Err(anyhow!(
+                "layer title contains unsafe path characters: {name}"
+            ));
         }
 
         tracing::info!(%name, digest = %layer.digest, "pulling layer");

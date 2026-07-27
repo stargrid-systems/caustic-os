@@ -34,8 +34,7 @@ pub fn is_available() -> bool {
 }
 
 pub async fn run_rpiboot() -> Result<(), Error> {
-    let binary = which::which(binary_name())
-        .map_err(|_| Error::NotFound)?;
+    let binary = which::which(binary_name()).map_err(|_| Error::NotFound)?;
 
     match run_command(&mut tokio::process::Command::new(&binary)).await {
         Ok(()) => Ok(()),

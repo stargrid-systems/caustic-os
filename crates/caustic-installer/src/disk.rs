@@ -17,8 +17,9 @@ impl Disk {
 
 #[cfg(target_os = "linux")]
 mod lsblk {
-    use super::Disk;
     use std::process::Command;
+
+    use super::Disk;
 
     #[derive(serde::Deserialize)]
     struct Output {
@@ -91,11 +92,7 @@ mod lsblk {
                 let is_removable = d.is_removable();
                 let device = d.name;
                 Disk {
-                    bus_type: d
-                        .tran
-                        .as_deref()
-                        .unwrap_or("UNKNOWN")
-                        .to_uppercase(),
+                    bus_type: d.tran.as_deref().unwrap_or("UNKNOWN").to_uppercase(),
                     description: build_description(
                         d.vendor.as_deref().unwrap_or(""),
                         d.model.as_deref().unwrap_or(""),
@@ -137,8 +134,9 @@ mod lsblk {
 
 #[cfg(target_os = "macos")]
 mod diskutil {
-    use super::Disk;
     use std::process::Command;
+
+    use super::Disk;
 
     pub fn list() -> Vec<Disk> {
         let mut disk_names = Vec::new();
@@ -173,9 +171,7 @@ mod diskutil {
         let plist = plist::Value::from_reader(std::io::Cursor::new(output.stdout))?;
         let dict = plist.as_dictionary()?;
 
-        let size = dict
-            .get("TotalSize")?
-            .as_unsigned_integer()?;
+        let size = dict.get("TotalSize")?.as_unsigned_integer()?;
 
         if size == 0 {
             return None;
@@ -228,8 +224,9 @@ mod diskutil {
 
 #[cfg(target_os = "windows")]
 mod win_disk {
-    use super::Disk;
     use std::process::Command;
+
+    use super::Disk;
 
     pub fn list() -> Vec<Disk> {
         let output = Command::new("powershell")
@@ -237,17 +234,11 @@ mod win_disk {
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
-                "$sysDisks = @(Get-Partition -ErrorAction SilentlyContinue \
-                 | Where-Object { $_.IsBoot -or $_.IsSystem } \
-                 | Select-Object -ExpandProperty DiskNumber -Unique); \
-                 Get-PhysicalDisk \
-                 | ForEach-Object { [PSCustomObject]@{ \
-                     DeviceId=$_.DeviceId; \
-                     FriendlyName=$_.FriendlyName; \
-                     Size=$_.Size; \
-                     BusType=$_.BusType.ToString(); \
-                     IsSystem=($sysDisks -contains ([int]$_.DeviceId)) \
-                 } } | ConvertTo-Json -Compress",
+                "$sysDisks = @(Get-Partition -ErrorAction SilentlyContinue | Where-Object { \
+                 $_.IsBoot -or $_.IsSystem } | Select-Object -ExpandProperty DiskNumber -Unique); \
+                 Get-PhysicalDisk | ForEach-Object { [PSCustomObject]@{ DeviceId=$_.DeviceId; \
+                 FriendlyName=$_.FriendlyName; Size=$_.Size; BusType=$_.BusType.ToString(); \
+                 IsSystem=($sysDisks -contains ([int]$_.DeviceId)) } } | ConvertTo-Json -Compress",
             ])
             .output();
 
