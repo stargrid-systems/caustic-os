@@ -4,7 +4,7 @@ mod flash;
 mod i18n;
 mod usbboot;
 
-pub fn main() -> iced::Result {
+fn main() -> iced::Result {
     let simulate = std::env::args().any(|a| a == "--simulate");
     let auto = std::env::args().any(|a| a == "--auto");
 
