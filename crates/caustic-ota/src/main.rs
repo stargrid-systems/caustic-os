@@ -167,9 +167,6 @@ async fn pull_layers(
 
         tracing::info!(%name, digest = %layer.digest, "pulling layer");
         let dst = staging.join(name);
-        if let Some(parent) = dst.parent() {
-            fs::create_dir_all(parent).ok();
-        }
         caustic_oci::pull_blob(registry, tag, layer, &dst)
             .await
             .with_context(|| format!("pull layer {name}"))?;
