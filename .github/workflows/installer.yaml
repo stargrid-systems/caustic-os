@@ -152,4 +152,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release edit "${TAG}" --draft=false
+          gh release edit "${TAG}" --repo ${{ github.repository }} --draft=false
