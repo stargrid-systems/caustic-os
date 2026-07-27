@@ -316,20 +316,20 @@ impl Installer {
 
             for (i, d) in disks.iter().enumerate() {
                 let is_selected = selected == Some(i);
-                let mut info = row![
-                    text(format!("{} GB", d.size_gb())).size(12),
-                    text(d.bus_type.clone()).size(12),
-                ];
 
+                let mut info_parts = vec![format!("{} GB", d.size_gb()), d.bus_type.clone()];
                 if d.is_removable {
-                    info = info.push(text(t(self.lang, Text::Removable)).size(12));
+                    info_parts.push(t(self.lang, Text::Removable).to_string());
                 }
 
                 let label = row![
-                    column![text(d.description.clone()).size(16), info],
+                    column![
+                        text(d.description.clone()).size(16),
+                        text(info_parts.join(" \u{00b7} ")).size(12),
+                    ],
                     Space::new().width(Fill),
                     if is_selected {
-                        text("\u{2713}")
+                        text("\u{2713}").size(18)
                     } else {
                         text("")
                     },
@@ -372,6 +372,7 @@ impl Installer {
         if selected.is_some() {
             col = col.push(
                 button(t(self.lang, Text::Flash))
+                    .width(Fill)
                     .style(button::danger)
                     .on_press(Message::FlashClicked),
             );
