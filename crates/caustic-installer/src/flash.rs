@@ -17,6 +17,9 @@ pub async fn flash_image(
         .map_err(|e| Error(e.to_string()))?
         .len();
 
+    #[cfg(target_os = "macos")]
+    unmount_disk(&target).await;
+
     match try_open_device(&target).await {
         Ok(output) => flash_direct(image, output, file_size, progress).await,
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
@@ -43,6 +46,16 @@ async fn try_open_device(target: &str) -> std::io::Result<tokio::fs::File> {
     let resolved = target.to_string();
 
     tokio::fs::OpenOptions::new().write(true).open(&resolved).await
+}
+
+#[cfg(target_os = "macos")]
+async fn unmount_disk(target: &str) {
+    let _ = tokio::process::Command::new("diskutil")
+        .args(["unmountDisk", target])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await;
 }
 
 async fn flash_direct(

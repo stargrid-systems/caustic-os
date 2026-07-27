@@ -156,7 +156,17 @@ impl Installer {
                 };
                 let disks = get_disks(self.simulate);
                 let selected = old_selected.filter(|&i| i < disks.len());
+                let disk_count = disks.len();
                 self.step = Step::SelectDisk { disks, selected };
+                if self.auto {
+                    if disk_count == 0 {
+                        return delayed_message(
+                            Duration::from_secs(1),
+                            Message::DiskRefreshClicked,
+                        );
+                    }
+                    return delayed_message(Duration::from_secs(1), Message::DiskSelected(0));
+                }
                 Task::none()
             }
             Message::RpibootClicked => self.start_rpiboot(),
@@ -464,6 +474,8 @@ impl Installer {
             return Task::sip(straw, Message::DownloadProgress, Message::DownloadFinished);
         }
 
+        self.error = None;
+
         let registry = self.channel.registry().to_string();
 
         let Some(cache_dir) = cache_dir() else {
@@ -474,6 +486,7 @@ impl Installer {
         let image_path = cache_dir
             .join(self.channel.slug())
             .join(format!("caustic-os-{tag}.img"));
+        let partial_path = image_path.with_extension("img.partial");
 
         if let Some(parent) = image_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -498,7 +511,12 @@ impl Installer {
             let manifest = caustic_oci::fetch_manifest(&registry, &tag).await?;
             let layer = caustic_oci::find_layer_by_suffix(&manifest, ".img")
                 .ok_or(caustic_oci::Error::NoImageLayer)?;
-            caustic_oci::pull_blob_streaming(&registry, &tag, layer, &image_path, progress).await
+            caustic_oci::pull_blob_streaming(&registry, &tag, layer, &partial_path, progress)
+                .await?;
+            tokio::fs::rename(&partial_path, &image_path)
+                .await
+                .map_err(|e| caustic_oci::Error::Io(e.to_string()))?;
+            Ok::<(), caustic_oci::Error>(())
         });
 
         Task::sip(straw, Message::DownloadProgress, Message::DownloadFinished)
@@ -530,6 +548,7 @@ impl Installer {
     }
 
     fn start_flash(&mut self) -> Task<Message> {
+        self.error = None;
         let Step::SelectDisk { disks, selected } = &self.step else {
             return Task::none();
         };
