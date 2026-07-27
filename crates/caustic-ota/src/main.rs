@@ -5,7 +5,6 @@ use std::process::Command;
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use caustic_oci::{self, OciImageManifest};
 
@@ -71,14 +70,14 @@ async fn check(registry: &str, tag: &str) -> Result<()> {
         .await
         .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
     let version = caustic_oci::extract_version(&manifest)?;
-    let state = read_state().unwrap_or_else(|_| State {
+    let state = read_state().unwrap_or(State {
         current_version: String::new(),
     });
     if version == state.current_version {
-        info!(%version, "already up to date");
+        tracing::info!(%version, "already up to date");
         println!("up-to-date");
     } else {
-        info!(%version, current = %state.current_version, "update available");
+        tracing::info!(%version, current = %state.current_version, "update available");
         println!("update-available {version}");
     }
     Ok(())
@@ -93,15 +92,15 @@ async fn update(registry: &str, tag: &str, force: bool) -> Result<()> {
         .await
         .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
     let version = caustic_oci::extract_version(&manifest)?;
-    let state = read_state().unwrap_or_else(|_| State {
+    let state = read_state().unwrap_or(State {
         current_version: String::new(),
     });
     if version == state.current_version {
-        info!(%version, "already up to date");
+        tracing::info!(%version, "already up to date");
         return Ok(());
     }
 
-    info!(%version, "preparing update");
+    tracing::info!(%version, "preparing update");
     let staging = Path::new(STAGING_DIR);
     fs::create_dir_all(staging).context("create staging dir")?;
     clear_dir(staging)?;
@@ -109,7 +108,7 @@ async fn update(registry: &str, tag: &str, force: bool) -> Result<()> {
     pull_layers(registry, tag, &manifest, staging).await?;
     caustic_oci::verify_sha256sums(staging).context("verify checksums")?;
 
-    info!("invoking systemd-sysupdate");
+    tracing::info!("invoking systemd-sysupdate");
     let status = Command::new(SYSUPDATE_BIN)
         .arg("update")
         .status()
@@ -121,7 +120,7 @@ async fn update(registry: &str, tag: &str, force: bool) -> Result<()> {
     write_state(&State {
         current_version: version.clone(),
     })?;
-    info!(%version, "update staged, reboot pending");
+    tracing::info!(%version, "update staged, reboot pending");
     Ok(())
 }
 
@@ -130,9 +129,7 @@ fn verify_boot_healthy() -> Result<()> {
         .args(["is-system-running"])
         .output()
         .context("run systemctl is-system-running")?;
-    let status = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_string();
+    let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
     match status.as_str() {
         "running" | "degraded" => Ok(()),
         other => Err(anyhow!(
@@ -147,7 +144,7 @@ fn factory_reset() -> Result<()> {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     fs::write(sentinel, "1\n").context("write factory-reset sentinel")?;
-    info!("factory reset requested; reboot to complete");
+    tracing::info!("factory reset requested; reboot to complete");
     Ok(())
 }
 
@@ -161,9 +158,9 @@ async fn pull_layers(
         let name = layer
             .annotations
             .as_ref()
-            .and_then(|a| a.get("org.opencontainers.image.title"))
+            .and_then(|annotations| annotations.get("org.opencontainers.image.title"))
             .ok_or_else(|| anyhow!("layer missing title annotation"))?;
-        info!(%name, digest = %layer.digest, "pulling layer");
+        tracing::info!(%name, digest = %layer.digest, "pulling layer");
         let dst = staging.join(name);
         if let Some(parent) = dst.parent() {
             fs::create_dir_all(parent).ok();
@@ -171,7 +168,7 @@ async fn pull_layers(
         caustic_oci::pull_blob(registry, tag, layer, &dst)
             .await
             .with_context(|| format!("pull layer {name}"))?;
-        info!(%name, "pulled");
+        tracing::info!(%name, "pulled");
     }
     Ok(())
 }

@@ -9,6 +9,8 @@ members = [
 [workspace.package]
 edition = "2024"
 publish = false
+repository = "https://github.com/stargrid-systems/caustic-os"
+license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
 caustic-oci = { path = "crates/caustic-oci", default-features = false }
@@ -25,6 +27,10 @@ tokio = { version = "1", default-features = false }
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 which = { version = "8", default-features = false }
+
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 
 [profile.release]
 strip = true

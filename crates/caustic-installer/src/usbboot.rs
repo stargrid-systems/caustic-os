@@ -7,7 +7,8 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn is_not_found(&self) -> bool {
+    #[must_use]
+    pub const fn is_not_found(&self) -> bool {
         matches!(self, Self::NotFound)
     }
 }
@@ -23,7 +24,7 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-fn binary_name() -> &'static str {
+const fn binary_name() -> &'static str {
     if cfg!(target_os = "windows") {
         "rpiboot.exe"
     } else {
@@ -31,6 +32,7 @@ fn binary_name() -> &'static str {
     }
 }
 
+#[must_use]
 pub fn is_available() -> bool {
     which::which(binary_name()).is_ok()
 }

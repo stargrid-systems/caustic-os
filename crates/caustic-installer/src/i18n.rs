@@ -6,11 +6,11 @@ pub enum Lang {
 
 impl Lang {
     pub fn detect() -> Self {
-        for var in &["LC_ALL", "LC_MESSAGES", "LANG"] {
-            if let Ok(val) = std::env::var(var) {
-                if val.to_lowercase().starts_with("de") {
-                    return Self::De;
-                }
+        for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+            if let Ok(val) = std::env::var(var)
+                && val.to_lowercase().starts_with("de")
+            {
+                return Self::De;
             }
         }
         Self::En
@@ -21,24 +21,34 @@ impl Lang {
 pub enum Text {
     Loading,
     SelectRelease,
+    Production,
+    Development,
     Download,
     Downloading,
     SelectDisk,
+    DataLossWarning,
     Flash,
     Flashing,
     Done,
     DoneHint,
+    Close,
     Error,
     RpibootNotFound,
 }
 
-pub fn t(lang: Lang, text: Text) -> &'static str {
+pub const fn t(lang: Lang, text: Text) -> &'static str {
     match (lang, text) {
         (Lang::En, Text::Loading) => "Loading available releases...",
-        (Lang::De, Text::Loading) => "Verfuegbare Releases werden geladen...",
+        (Lang::De, Text::Loading) => "Verfügbare Releases werden geladen...",
 
         (Lang::En, Text::SelectRelease) => "Select a release",
-        (Lang::De, Text::SelectRelease) => "Release auswaehlen",
+        (Lang::De, Text::SelectRelease) => "Release auswählen",
+
+        (Lang::En, Text::Production) => "Production",
+        (Lang::De, Text::Production) => "Produktion",
+
+        (Lang::En, Text::Development) => "Development",
+        (Lang::De, Text::Development) => "Entwicklung",
 
         (Lang::En, Text::Download) => "Download",
         (Lang::De, Text::Download) => "Herunterladen",
@@ -47,19 +57,27 @@ pub fn t(lang: Lang, text: Text) -> &'static str {
         (Lang::De, Text::Downloading) => "Image wird heruntergeladen...",
 
         (Lang::En, Text::SelectDisk) => "Select target disk",
-        (Lang::De, Text::SelectDisk) => "Ziel-Datentraeger auswaehlen",
+        (Lang::De, Text::SelectDisk) => "Zieldatenträger auswählen",
+
+        (Lang::En, Text::DataLossWarning) => "All data on the selected disk will be erased!",
+        (Lang::De, Text::DataLossWarning) => {
+            "Alle Daten auf dem ausgewählten Datenträger werden gelöscht!"
+        }
 
         (Lang::En, Text::Flash) => "Flash image",
         (Lang::De, Text::Flash) => "Image flashen",
 
         (Lang::En, Text::Flashing) => "Flashing image to disk...",
-        (Lang::De, Text::Flashing) => "Image wird auf Datentraeger geflasht...",
+        (Lang::De, Text::Flashing) => "Image wird auf den Datenträger geflasht...",
 
         (Lang::En, Text::Done) => "Installation complete!",
         (Lang::De, Text::Done) => "Installation abgeschlossen!",
 
         (Lang::En, Text::DoneHint) => "You can now boot the device.",
-        (Lang::De, Text::DoneHint) => "Sie koennen das Geraet jetzt starten.",
+        (Lang::De, Text::DoneHint) => "Das Gerät kann jetzt gestartet werden.",
+
+        (Lang::En, Text::Close) => "Close",
+        (Lang::De, Text::Close) => "Schließen",
 
         (Lang::En, Text::Error) => "Error",
         (Lang::De, Text::Error) => "Fehler",
@@ -70,7 +88,7 @@ pub fn t(lang: Lang, text: Text) -> &'static str {
         }
         (Lang::De, Text::RpibootNotFound) => {
             "rpiboot wurde auf diesem System nicht gefunden.\n\
-             Installieren Sie es von https://github.com/raspberrypi/usbboot"
+             Zu finden unter https://github.com/raspberrypi/usbboot"
         }
     }
 }

@@ -3,9 +3,14 @@ name = "caustic-installer"
 version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 caustic-oci = { workspace = true }
-iced = { workspace = true, features = ["wgpu", "tokio", "sipper", "x11", "wayland"] }
+iced = { workspace = true, features = ["wgpu", "tokio", "sipper", "wayland"] }
 tokio = { workspace = true, features = ["sync", "macros", "fs", "io-util"] }
 which = { workspace = true, features = ["real-sys"] }
+
+[lints]
+workspace = true

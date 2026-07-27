@@ -4,6 +4,9 @@ pub struct Disk {
     pub size_gb: u64,
 }
 
+const SECTOR_SIZE: u64 = 512;
+const BYTES_PER_GB: u64 = 1_000_000_000;
+
 #[cfg(target_os = "linux")]
 pub fn list_disks() -> Vec<Disk> {
     let mut disks = Vec::new();
@@ -26,8 +29,8 @@ pub fn list_disks() -> Vec<Disk> {
             continue;
         };
 
-        let sectors: u64 = size_str.trim().parse().unwrap_or(0);
-        let size_gb = sectors * 512 / 1_000_000_000;
+        let sectors: u64 = size_str.trim().parse().unwrap_or_default();
+        let size_gb = sectors * SECTOR_SIZE / BYTES_PER_GB;
 
         let model = std::fs::read_to_string(format!("/sys/block/{name}/device/model"))
             .map(|s| s.trim().to_string())
@@ -49,12 +52,7 @@ pub fn list_disks() -> Vec<Disk> {
     disks
 }
 
-#[cfg(target_os = "windows")]
-pub fn list_disks() -> Vec<Disk> {
-    Vec::new()
-}
-
-#[cfg(target_os = "macos")]
+#[cfg(not(target_os = "linux"))]
 pub fn list_disks() -> Vec<Disk> {
     Vec::new()
 }
