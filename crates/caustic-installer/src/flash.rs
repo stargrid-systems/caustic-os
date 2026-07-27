@@ -40,12 +40,7 @@ pub async fn flash_image(
 }
 
 async fn try_open_device(target: &str) -> std::io::Result<tokio::fs::File> {
-    #[cfg(target_os = "macos")]
-    let resolved = target.replace("/dev/disk", "/dev/rdisk");
-    #[cfg(not(target_os = "macos"))]
-    let resolved = target.to_string();
-
-    tokio::fs::OpenOptions::new().write(true).open(&resolved).await
+    tokio::fs::OpenOptions::new().write(true).open(target).await
 }
 
 #[cfg(target_os = "macos")]
