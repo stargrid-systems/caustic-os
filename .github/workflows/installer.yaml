@@ -77,6 +77,8 @@ jobs:
         run: cargo build --release -p caustic-installer
 
       - name: Create AppImage
+        env:
+          LINUXDEPLOY_SHA256: e87ee0815d109282fdda73e34c2361d64d02b0ffaea3674b18f1fd1f6a687dcf
         run: |
           set -euo pipefail
           version="${TAG#installer-}"
@@ -87,6 +89,7 @@ jobs:
 
           curl -fsSL -o linuxdeploy \
             https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          echo "${LINUXDEPLOY_SHA256}  linuxdeploy" | sha256sum -c -
           chmod +x linuxdeploy
 
           OUTPUT="caustic-installer-${version}-x86_64.AppImage" \

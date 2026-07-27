@@ -85,10 +85,7 @@ fn build_elevated_command(binary: &str) -> Result<tokio::process::Command, Error
 
 #[cfg(target_os = "linux")]
 fn is_root() -> bool {
-    unsafe extern "C" {
-        fn geteuid() -> u32;
-    }
-    unsafe { geteuid() == 0 }
+    rustix::process::geteuid().as_raw() == 0
 }
 
 #[cfg(not(target_os = "linux"))]

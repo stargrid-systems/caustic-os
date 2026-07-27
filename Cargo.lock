@@ -290,6 +290,7 @@ dependencies = [
  "caustic-oci",
  "directories",
  "iced",
+ "rustix 1.1.4",
  "sys-locale",
  "tokio",
  "which",
