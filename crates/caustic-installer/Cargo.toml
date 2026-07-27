@@ -1,10 +1,11 @@
 [package]
 name = "caustic-installer"
 version = "0.1.0"
-edition = "2021"
-publish = false
+edition.workspace = true
+publish.workspace = true
 
 [dependencies]
-caustic-installer-core = { path = "../caustic-installer-core" }
-iced = { version = "0.14", features = ["tokio", "sipper"] }
-tokio = { workspace = true, features = ["sync", "macros"] }
+caustic-oci = { workspace = true }
+iced = { workspace = true, features = ["wgpu", "tokio", "sipper", "x11", "wayland"] }
+tokio = { workspace = true, features = ["sync", "macros", "fs", "io-util"] }
+which = { workspace = true, features = ["real-sys"] }

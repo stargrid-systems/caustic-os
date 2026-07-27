@@ -5,12 +5,14 @@ use iced::task::{sipper, Straw};
 use iced::widget::{button, column, container, progress_bar, text};
 use iced::{Center, Element, Fill, Task};
 
-use caustic_installer_core::disk::{self, Disk};
-use caustic_installer_core::{flash, oci};
+use crate::disk::{self, Disk};
+use crate::flash;
+use crate::i18n::{t, Lang, Text};
 
 const REGISTRY: &str = "ghcr.io/stargrid-systems/caustic-os";
 
 pub struct Installer {
+    lang: Lang,
     step: Step,
     tags: Vec<String>,
     selected_tag: Option<usize>,
@@ -28,26 +30,41 @@ pub enum Message {
     FlashClicked,
     FlashProgress(f32),
     FlashFinished(Result<(), String>),
-    Back,
+    LanguageSelected(Lang),
 }
 
 enum Step {
     Loading,
     SelectRelease,
-    Downloading { progress: f32, image_path: PathBuf },
-    SelectDisk { image_path: PathBuf, disks: Vec<Disk>, selected: Option<usize> },
-    Flashing { progress: f32 },
+    Downloading {
+        progress: f32,
+        image_path: PathBuf,
+    },
+    SelectDisk {
+        image_path: PathBuf,
+        disks: Vec<Disk>,
+        selected: Option<usize>,
+    },
+    Flashing {
+        progress: f32,
+    },
     Done,
 }
 
 impl Installer {
     pub fn new() -> (Self, Task<Message>) {
+        let lang = Lang::detect();
         let task = Task::perform(
-            async { oci::list_tags(REGISTRY).await.map_err(|e| e.to_string()) },
+            async {
+                caustic_oci::list_tags(REGISTRY)
+                    .await
+                    .map_err(|e| e.to_string())
+            },
             Message::TagsLoaded,
         );
         (
             Self {
+                lang,
                 step: Step::Loading,
                 tags: Vec::new(),
                 selected_tag: None,
@@ -116,30 +133,40 @@ impl Installer {
                 self.error = Some(err);
                 Task::none()
             }
-            Message::Back => {
-                self.error = None;
-                self.step = Step::SelectRelease;
+            Message::LanguageSelected(lang) => {
+                self.lang = lang;
                 Task::none()
             }
         }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
+        let lang_button = button(text(match self.lang {
+            Lang::En => "DE",
+            Lang::De => "EN",
+        }))
+        .on_press(Message::LanguageSelected(match self.lang {
+            Lang::En => Lang::De,
+            Lang::De => Lang::En,
+        }));
+
         let content: Element<'_, Message> = match &self.step {
-            Step::Loading => column![text("Loading available releases...").size(20)].into(),
+            Step::Loading => column![text(t(self.lang, Text::Loading)).size(20)].into(),
             Step::SelectRelease => self.view_releases(),
             Step::Downloading { progress, .. } => {
                 column![
-                    text("Downloading image...").size(20),
+                    text(t(self.lang, Text::Downloading)).size(20),
                     progress_bar(0.0..=100.0, *progress),
                     text(format!("{progress:.1}%")).size(16),
                 ]
                 .into()
             }
-            Step::SelectDisk { disks, selected, .. } => self.view_disks(disks, selected),
+            Step::SelectDisk {
+                disks, selected, ..
+            } => self.view_disks(disks, selected),
             Step::Flashing { progress } => {
                 column![
-                    text("Flashing image to disk...").size(20),
+                    text(t(self.lang, Text::Flashing)).size(20),
                     progress_bar(0.0..=100.0, *progress),
                     text(format!("{progress:.1}%")).size(16),
                 ]
@@ -147,43 +174,40 @@ impl Installer {
             }
             Step::Done => {
                 column![
-                    text("Installation complete!").size(24),
-                    text("You can now boot the device.").size(16),
+                    text(t(self.lang, Text::Done)).size(24),
+                    text(t(self.lang, Text::DoneHint)).size(16),
                 ]
                 .into()
             }
         };
 
         let styled = if let Some(err) = &self.error {
-            column![content, text(format!("Error: {err}")).size(14)].spacing(10)
+            column![
+                content,
+                text(format!("{}: {err}", t(self.lang, Text::Error))).size(14),
+            ]
+            .spacing(10)
         } else {
             column![content]
         };
 
-        container(
-            styled
-                .spacing(20)
-                .width(Fill)
-                .align_x(Center)
-                .padding(40),
-        )
-        .center(Fill)
-        .into()
+        let with_lang = column![lang_button, styled.spacing(20).width(Fill).align_x(Center)]
+            .padding(40)
+            .spacing(10);
+
+        container(with_lang).center(Fill).into()
     }
 
     fn view_releases(&self) -> Element<'_, Message> {
-        let mut col = column![text("Select a release").size(24)];
+        let mut col = column![text(t(self.lang, Text::SelectRelease)).size(24)];
 
         for (i, tag) in self.tags.iter().enumerate() {
-            col = col.push(
-                button(text(tag.clone()))
-                    .on_press(Message::TagSelected(i)),
-            );
+            col = col.push(button(text(tag.clone())).on_press(Message::TagSelected(i)));
         }
 
         if self.selected_tag.is_some() {
             col = col.push(
-                button(text("Download"))
+                button(t(self.lang, Text::Download))
                     .style(button::success)
                     .on_press(Message::DownloadClicked),
             );
@@ -193,18 +217,18 @@ impl Installer {
     }
 
     fn view_disks(&self, disks: &[Disk], selected: &Option<usize>) -> Element<'_, Message> {
-        let mut col = column![text("Select target disk").size(24)];
+        let mut col = column![text(t(self.lang, Text::SelectDisk)).size(24)];
 
-        for (i, disk) in disks.iter().enumerate() {
+        for (i, d) in disks.iter().enumerate() {
             col = col.push(
-                button(text(format!("{} ({} GB)", disk.name, disk.size_gb)))
+                button(text(format!("{} ({} GB)", d.name, d.size_gb)))
                     .on_press(Message::DiskSelected(i)),
             );
         }
 
         if selected.is_some() {
             col = col.push(
-                button(text("Flash image"))
+                button(t(self.lang, Text::Flash))
                     .style(button::danger)
                     .on_press(Message::FlashClicked),
             );
@@ -221,28 +245,30 @@ impl Installer {
             return Task::none();
         };
 
-        let image_path = std::env::temp_dir()
-            .join(format!("caustic-os-{tag}.img"))
-            .to_string_lossy()
-            .into_owned();
+        let image_path = std::env::temp_dir().join(format!("caustic-os-{tag}.img"));
 
-        let image_path_buf = PathBuf::from(&image_path);
+        self.step = Step::Downloading {
+            progress: 0.0,
+            image_path: image_path.clone(),
+        };
 
-        let straw = run_with_progress(move |progress| {
-            oci::pull_image(
-                REGISTRY.to_string(),
-                tag,
-                PathBuf::from(&image_path),
-                progress,
-            )
+        let straw = run_with_progress(move |progress| async move {
+            let manifest = caustic_oci::fetch_manifest(REGISTRY, &tag).await?;
+            let layer = caustic_oci::find_layer_by_suffix(&manifest, ".img")
+                .ok_or(caustic_oci::Error::NoImageLayer)?;
+            caustic_oci::pull_blob_streaming(REGISTRY, &tag, layer, &image_path, progress).await
         });
 
-        self.step = Step::Downloading { progress: 0.0, image_path: image_path_buf };
         Task::sip(straw, Message::DownloadProgress, Message::DownloadFinished)
     }
 
     fn start_flash(&mut self) -> Task<Message> {
-        let Step::SelectDisk { image_path, disks, selected } = &self.step else {
+        let Step::SelectDisk {
+            image_path,
+            disks,
+            selected,
+        } = &self.step
+        else {
             return Task::none();
         };
 
@@ -250,18 +276,17 @@ impl Installer {
             return Task::none();
         };
 
-        let Some(disk) = disks.get(*index) else {
+        let Some(d) = disks.get(*index) else {
             return Task::none();
         };
 
         let image = image_path.clone();
-        let target = disk.path.clone();
-
-        let straw = run_with_progress(move |progress| {
-            flash::flash_image(image, target, progress)
-        });
+        let target = d.path.clone();
 
         self.step = Step::Flashing { progress: 0.0 };
+
+        let straw = run_with_progress(move |progress| flash::flash_image(image, target, progress));
+
         Task::sip(straw, Message::FlashProgress, Message::FlashFinished)
     }
 }
@@ -284,8 +309,7 @@ where
             let _ = tx.send(pct);
         });
 
-        let fut = f(progress);
-        tokio::pin!(fut);
+        let mut fut = std::pin::pin!(f(progress));
 
         loop {
             tokio::select! {

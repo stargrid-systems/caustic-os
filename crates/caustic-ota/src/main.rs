@@ -1,27 +1,19 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
-use oci_client::{
-    client::ClientConfig,
-    manifest::{OciImageManifest, OciManifest},
-    secrets::RegistryAuth,
-    Client, Reference,
-};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
-use tokio::io::AsyncWriteExt;
-use tracing::{info, warn};
+use tracing::info;
+
+use caustic_oci::{self, OciImageManifest};
 
 const STAGING_DIR: &str = "/var/lib/caustic-ota/staging";
 const STATE_FILE: &str = "/var/lib/caustic-ota/state.json";
 const SYSUPDATE_BIN: &str = "/run/current-system/sw/bin/systemd-sysupdate";
 const SYSTEMCTL_BIN: &str = "/run/current-system/sw/bin/systemctl";
 const FACTORY_RESET_SENTINEL: &str = "/persist/.factory-reset";
-const VERSION_ANNOTATION: &str = "org.opencontainers.image.version";
 
 #[derive(Parser)]
 #[command(name = "caustic-ota", version, about = "Caustic OS OTA update daemon")]
@@ -75,9 +67,13 @@ async fn main() -> Result<()> {
 }
 
 async fn check(registry: &str, tag: &str) -> Result<()> {
-    let manifest = fetch_manifest(registry, tag).await?;
-    let version = extract_version(&manifest)?;
-    let state = read_state().unwrap_or_else(|_| State { current_version: String::new() });
+    let manifest = caustic_oci::fetch_manifest(registry, tag)
+        .await
+        .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
+    let version = caustic_oci::extract_version(&manifest)?;
+    let state = read_state().unwrap_or_else(|_| State {
+        current_version: String::new(),
+    });
     if version == state.current_version {
         info!(%version, "already up to date");
         println!("up-to-date");
@@ -93,9 +89,13 @@ async fn update(registry: &str, tag: &str, force: bool) -> Result<()> {
         verify_boot_healthy()?;
     }
 
-    let manifest = fetch_manifest(registry, tag).await?;
-    let version = extract_version(&manifest)?;
-    let state = read_state().unwrap_or_else(|_| State { current_version: String::new() });
+    let manifest = caustic_oci::fetch_manifest(registry, tag)
+        .await
+        .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
+    let version = caustic_oci::extract_version(&manifest)?;
+    let state = read_state().unwrap_or_else(|_| State {
+        current_version: String::new(),
+    });
     if version == state.current_version {
         info!(%version, "already up to date");
         return Ok(());
@@ -107,7 +107,7 @@ async fn update(registry: &str, tag: &str, force: bool) -> Result<()> {
     clear_dir(staging)?;
 
     pull_layers(registry, tag, &manifest, staging).await?;
-    verify_sha256sums(staging)?;
+    caustic_oci::verify_sha256sums(staging).context("verify checksums")?;
 
     info!("invoking systemd-sysupdate");
     let status = Command::new(SYSUPDATE_BIN)
@@ -118,7 +118,9 @@ async fn update(registry: &str, tag: &str, force: bool) -> Result<()> {
         return Err(anyhow!("systemd-sysupdate failed with status {status:?}"));
     }
 
-    write_state(&State { current_version: version.clone() })?;
+    write_state(&State {
+        current_version: version.clone(),
+    })?;
     info!(%version, "update staged, reboot pending");
     Ok(())
 }
@@ -128,7 +130,9 @@ fn verify_boot_healthy() -> Result<()> {
         .args(["is-system-running"])
         .output()
         .context("run systemctl is-system-running")?;
-    let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let status = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .to_string();
     match status.as_str() {
         "running" | "degraded" => Ok(()),
         other => Err(anyhow!(
@@ -140,35 +144,11 @@ fn verify_boot_healthy() -> Result<()> {
 fn factory_reset() -> Result<()> {
     let sentinel = Path::new(FACTORY_RESET_SENTINEL);
     if let Some(parent) = sentinel.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     fs::write(sentinel, "1\n").context("write factory-reset sentinel")?;
     info!("factory reset requested; reboot to complete");
     Ok(())
-}
-
-async fn fetch_manifest(registry: &str, tag: &str) -> Result<OciImageManifest> {
-    let reference: Reference = format!("{registry}:{tag}").parse()?;
-    let client = Client::new(ClientConfig::default());
-    let auth = RegistryAuth::Anonymous;
-    let (manifest, _) = client
-        .pull_manifest(&reference, &auth)
-        .await
-        .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
-    match manifest {
-        OciManifest::Image(m) => Ok(m),
-        OciManifest::ImageIndex(_) => Err(anyhow!("expected image manifest, got image index")),
-    }
-}
-
-fn extract_version(manifest: &OciImageManifest) -> Result<String> {
-    manifest
-        .annotations
-        .as_ref()
-        .and_then(|a| a.get(VERSION_ANNOTATION))
-        .cloned()
-        .ok_or_else(|| anyhow!("manifest missing {VERSION_ANNOTATION} annotation"))
 }
 
 async fn pull_layers(
@@ -177,9 +157,6 @@ async fn pull_layers(
     manifest: &OciImageManifest,
     staging: &Path,
 ) -> Result<()> {
-    let reference: Reference = format!("{registry}:{tag}").parse()?;
-    let client = Client::new(ClientConfig::default());
-
     for layer in &manifest.layers {
         let name = layer
             .annotations
@@ -191,41 +168,10 @@ async fn pull_layers(
         if let Some(parent) = dst.parent() {
             fs::create_dir_all(parent).ok();
         }
-        let mut async_file = tokio::fs::File::create(&dst)
-            .await
-            .with_context(|| format!("create {name}"))?;
-        client
-            .pull_blob(&reference, layer, &mut async_file)
+        caustic_oci::pull_blob(registry, tag, layer, &dst)
             .await
             .with_context(|| format!("pull layer {name}"))?;
-        async_file.flush().await.ok();
         info!(%name, "pulled");
-    }
-    Ok(())
-}
-
-fn verify_sha256sums(staging: &Path) -> Result<()> {
-    let sums_path = staging.join("SHA256SUMS");
-    let content = match fs::read_to_string(&sums_path) {
-        Ok(c) => c,
-        Err(_) => {
-            warn!("SHA256SUMS missing, skipping verification");
-            return Ok(());
-        }
-    };
-    for line in content.lines() {
-        let mut parts = line.splitn(2, "  ");
-        let expected = parts.next().ok_or_else(|| anyhow!("malformed SHA256SUMS line"))?;
-        let name = parts.next().ok_or_else(|| anyhow!("malformed SHA256SUMS line"))?;
-        let path = staging.join(name);
-        let bytes = fs::read(&path).with_context(|| format!("read {name}"))?;
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
-        if actual != expected {
-            return Err(anyhow!("checksum mismatch for {name}"));
-        }
-        info!(%name, "verified");
     }
     Ok(())
 }
