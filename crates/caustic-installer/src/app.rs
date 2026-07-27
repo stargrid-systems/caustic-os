@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use iced::task::{sipper, Straw};
 use iced::widget::{
@@ -45,6 +46,7 @@ pub struct Installer {
     selected_tag: Option<usize>,
     image_path: Option<PathBuf>,
     error: Option<String>,
+    simulate: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -78,10 +80,14 @@ enum Step {
 }
 
 impl Installer {
-    pub fn init() -> (Self, Task<Message>) {
+    pub fn init(simulate: bool) -> (Self, Task<Message>) {
         let lang = Lang::detect();
         let channel = Channel::Production;
-        let task = load_tags(channel);
+        let task = if simulate {
+            simulate_tags()
+        } else {
+            load_tags(channel)
+        };
         (
             Self {
                 lang,
@@ -91,6 +97,7 @@ impl Installer {
                 selected_tag: None,
                 image_path: None,
                 error: None,
+                simulate,
             },
             task,
         )
@@ -112,7 +119,7 @@ impl Installer {
                     Step::Flashing { .. }
                     | Step::SelectDisk { .. }
                     | Step::RunningRpiboot => {
-                        let disks = disk::list_disks();
+                        let disks = get_disks(self.simulate);
                         self.step = Step::SelectDisk {
                             disks,
                             selected: None,
@@ -129,17 +136,20 @@ impl Installer {
                 Task::none()
             }
             Message::ChannelSelected(channel) => {
-                if channel == self.channel {
-                    Task::none()
-                } else {
+                if channel != self.channel {
                     self.channel = channel;
                     self.selected_tag = None;
                     self.tags.clear();
                     self.error = None;
                     self.image_path = None;
                     self.step = Step::Loading;
-                    load_tags(channel)
+                    return if self.simulate {
+                        simulate_tags()
+                    } else {
+                        load_tags(channel)
+                    };
                 }
+                Task::none()
             }
             Message::DownloadClicked => self.start_download(),
             Message::DownloadProgress(progress) => {
@@ -153,7 +163,7 @@ impl Installer {
             }
             Message::DownloadFinished(Ok(()))
             | Message::RpibootFinished(Ok(())) => {
-                let disks = disk::list_disks();
+                let disks = get_disks(self.simulate);
                 self.step = Step::SelectDisk {
                     disks,
                     selected: None,
@@ -171,7 +181,7 @@ impl Installer {
                     Step::SelectDisk { selected, .. } => *selected,
                     _ => None,
                 };
-                let disks = disk::list_disks();
+                let disks = get_disks(self.simulate);
                 let selected = old_selected.filter(|&i| i < disks.len());
                 self.step = Step::SelectDisk { disks, selected };
                 Task::none()
@@ -179,7 +189,10 @@ impl Installer {
             Message::RpibootClicked => self.start_rpiboot(),
             Message::FlashClicked => self.start_flash(),
             Message::FlashProgress(progress) => {
-                if let Step::Flashing { progress: current } = &mut self.step {
+                if let Step::Flashing {
+                    progress: current, ..
+                } = &mut self.step
+                {
                     *current = progress;
                 }
                 Task::none()
@@ -192,10 +205,56 @@ impl Installer {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
+        let header = self.view_header();
+
+        let body = container(self.view_body())
+            .width(Fill)
+            .height(Fill)
+            .center_y(Fill);
+
+        let footer = self.view_footer();
+
+        let mut layout = column![header, body];
+
+        if let Some(err) = &self.error {
+            layout = layout.push(
+                text(format!("{}: {err}", t(self.lang, Text::Error))).size(14),
+            );
+        }
+
+        layout = layout.push(footer);
+        layout = layout.spacing(16);
+
+        container(layout)
+            .width(Fill)
+            .height(Fill)
+            .max_width(560)
+            .center_x(Fill)
+            .padding(40)
+            .into()
+    }
+
+    fn view_header(&self) -> Element<'_, Message> {
         let title = text("Caustic OS Installer").size(22);
 
-        let content: Element<'_, Message> = match &self.step {
-            Step::Loading => column![text(t(self.lang, Text::Loading)).size(16)].into(),
+        if matches!(self.step, Step::Loading | Step::SelectRelease) {
+            let channel_row = row![
+                channel_button(self.channel, Channel::Production, self.lang),
+                channel_button(self.channel, Channel::Development, self.lang),
+            ]
+            .spacing(8);
+
+            column![title, channel_row].spacing(12).into()
+        } else {
+            title.into()
+        }
+    }
+
+    fn view_body(&self) -> Element<'_, Message> {
+        match &self.step {
+            Step::Loading => {
+                column![text(t(self.lang, Text::Loading)).size(16)].into()
+            }
             Step::SelectRelease => self.view_releases(),
             Step::Downloading { progress } => column![
                 text(t(self.lang, Text::Downloading)).size(18),
@@ -204,11 +263,9 @@ impl Installer {
             ]
             .spacing(12)
             .into(),
-            Step::SelectDisk { disks, selected } => {
-                self.view_disks(disks, *selected)
-            }
+            Step::SelectDisk { disks, selected } => self.view_disks(disks, *selected),
             Step::RunningRpiboot => {
-                column![text(t(self.lang, Text::RpibootRunning)).size(18),].into()
+                column![text(t(self.lang, Text::RpibootRunning)).size(18)].into()
             }
             Step::Flashing { progress } => column![
                 text(t(self.lang, Text::Flashing)).size(18),
@@ -223,32 +280,52 @@ impl Installer {
             ]
             .spacing(8)
             .into(),
+        }
+    }
+
+    fn view_footer(&self) -> Element<'_, Message> {
+        let footer: Option<Element<'_, Message>> = match &self.step {
+            Step::SelectRelease if self.selected_tag.is_some() => Some(
+                button(t(self.lang, Text::Download))
+                    .width(Fill)
+                    .style(button::primary)
+                    .on_press(Message::DownloadClicked)
+                    .into(),
+            ),
+            Step::SelectDisk { selected, .. } => {
+                let mut actions = row![
+                    button(t(self.lang, Text::Refresh))
+                        .style(button::secondary)
+                        .on_press(Message::DiskRefreshClicked),
+                    Space::new().width(Fill),
+                ]
+                .spacing(8);
+
+                if usbboot::is_available() || self.simulate {
+                    actions = actions.push(
+                        button(t(self.lang, Text::Rpiboot))
+                            .style(button::secondary)
+                            .on_press(Message::RpibootClicked),
+                    );
+                }
+
+                let mut col = column![actions];
+
+                if selected.is_some() {
+                    col = col.push(
+                        button(t(self.lang, Text::Flash))
+                            .width(Fill)
+                            .style(button::danger)
+                            .on_press(Message::FlashClicked),
+                    );
+                }
+
+                Some(col.spacing(8).into())
+            }
+            _ => None,
         };
 
-        let mut layout = column![title].spacing(20);
-
-        if matches!(self.step, Step::Loading | Step::SelectRelease) {
-            let channel_row = row![
-                channel_button(self.channel, Channel::Production, self.lang),
-                channel_button(self.channel, Channel::Development, self.lang),
-            ]
-            .spacing(8);
-            layout = layout.push(channel_row);
-        }
-
-        layout = layout.push(content);
-
-        if let Some(err) = &self.error {
-            layout = layout.push(
-                text(format!("{}: {err}", t(self.lang, Text::Error))).size(14),
-            );
-        }
-
-        container(layout.spacing(16))
-            .padding(40)
-            .max_width(560)
-            .center(Fill)
-            .into()
+        footer.unwrap_or_else(|| text("").into())
     }
 
     fn view_releases(&self) -> Element<'_, Message> {
@@ -279,21 +356,12 @@ impl Installer {
             );
         }
 
-        let mut col = column![
+        column![
             text(t(self.lang, Text::SelectRelease)).size(18),
-            scrollable(list.spacing(4)).height(280),
+            scrollable(list.spacing(4)).height(Fill),
         ]
-        .spacing(12);
-
-        if self.selected_tag.is_some() {
-            col = col.push(
-                button(t(self.lang, Text::Download))
-                    .style(button::primary)
-                    .on_press(Message::DownloadClicked),
-            );
-        }
-
-        col.into()
+        .spacing(12)
+        .into()
     }
 
     fn view_disks(&self, disks: &[Disk], selected: Option<usize>) -> Element<'_, Message> {
@@ -306,79 +374,49 @@ impl Installer {
         )
         .padding(8);
 
-        let mut col =
-            column![warning, text(t(self.lang, Text::SelectDisk)).size(18)].spacing(12);
+        let mut list = column![];
 
-        if disks.is_empty() {
-            col = col.push(text("").size(14));
-        } else {
-            let mut list = column![];
+        for (i, d) in disks.iter().enumerate() {
+            let is_selected = selected == Some(i);
 
-            for (i, d) in disks.iter().enumerate() {
-                let is_selected = selected == Some(i);
-
-                let mut info_parts = vec![format!("{} GB", d.size_gb()), d.bus_type.clone()];
-                if d.is_removable {
-                    info_parts.push(t(self.lang, Text::Removable).to_string());
-                }
-
-                let label = row![
-                    column![
-                        text(d.description.clone()).size(16),
-                        text(info_parts.join(" \u{00b7} ")).size(12),
-                    ],
-                    Space::new().width(Fill),
-                    if is_selected {
-                        text("\u{2713}").size(18)
-                    } else {
-                        text("")
-                    },
-                ]
-                .align_y(Center);
-
-                list = list.push(
-                    button(label)
-                        .width(Fill)
-                        .style(if is_selected {
-                            button::primary
-                        } else {
-                            button::secondary
-                        })
-                        .on_press(Message::DiskSelected(i)),
-                );
+            let mut info_parts = vec![format!("{} GB", d.size_gb()), d.bus_type.clone()];
+            if d.is_removable {
+                info_parts.push(t(self.lang, Text::Removable).to_string());
             }
 
-            col = col.push(scrollable(list.spacing(4)).height(200));
-        }
+            let label = row![
+                column![
+                    text(d.description.clone()).size(16),
+                    text(info_parts.join(" \u{00b7} ")).size(12),
+                ],
+                Space::new().width(Fill),
+                if is_selected {
+                    text("\u{2713}").size(18)
+                } else {
+                    text("")
+                },
+            ]
+            .align_y(Center);
 
-        let mut actions = row![
-            button(t(self.lang, Text::Refresh))
-                .style(button::secondary)
-                .on_press(Message::DiskRefreshClicked),
-            Space::new().width(Fill),
-        ]
-        .spacing(8);
-
-        if usbboot::is_available() {
-            actions = actions.push(
-                button(t(self.lang, Text::Rpiboot))
-                    .style(button::secondary)
-                    .on_press(Message::RpibootClicked),
-            );
-        }
-
-        col = col.push(actions);
-
-        if selected.is_some() {
-            col = col.push(
-                button(t(self.lang, Text::Flash))
+            list = list.push(
+                button(label)
                     .width(Fill)
-                    .style(button::danger)
-                    .on_press(Message::FlashClicked),
+                    .style(if is_selected {
+                        button::primary
+                    } else {
+                        button::secondary
+                    })
+                    .on_press(Message::DiskSelected(i)),
             );
         }
 
-        col.into()
+        column![
+            warning,
+            text(t(self.lang, Text::SelectDisk)).size(18),
+            scrollable(list.spacing(4)).height(Fill),
+        ]
+        .spacing(12)
+        .into()
     }
 
     fn start_download(&mut self) -> Task<Message> {
@@ -388,6 +426,12 @@ impl Installer {
         let Some(tag) = self.tags.get(index).cloned() else {
             return Task::none();
         };
+
+        if self.simulate {
+            self.step = Step::Downloading { progress: 0.0 };
+            let straw = simulate_straw();
+            return Task::sip(straw, Message::DownloadProgress, Message::DownloadFinished);
+        }
 
         let registry = self.channel.registry().to_string();
 
@@ -405,11 +449,10 @@ impl Installer {
         }
 
         if image_path.exists()
-            && std::fs::metadata(&image_path)
-                .is_ok_and(|m| m.len() > 0)
+            && std::fs::metadata(&image_path).is_ok_and(|m| m.len() > 0)
         {
             self.image_path = Some(image_path);
-            let disks = disk::list_disks();
+            let disks = get_disks(self.simulate);
             self.step = Step::SelectDisk {
                 disks,
                 selected: None,
@@ -431,12 +474,24 @@ impl Installer {
     }
 
     fn start_rpiboot(&mut self) -> Task<Message> {
+        if self.simulate {
+            self.step = Step::RunningRpiboot;
+            return Task::perform(
+                async {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    Ok::<(), String>(())
+                },
+                Message::RpibootFinished,
+            );
+        }
+
         if !usbboot::is_available() {
             self.error = Some(t(self.lang, Text::RpibootNotFound).to_string());
             return Task::none();
         }
 
         self.step = Step::RunningRpiboot;
+
         Task::perform(
             async { usbboot::run_rpiboot().await.map_err(|e| e.to_string()) },
             Message::RpibootFinished,
@@ -453,6 +508,13 @@ impl Installer {
         let Some(disk) = disks.get(index) else {
             return Task::none();
         };
+
+        if self.simulate {
+            self.step = Step::Flashing { progress: 0.0 };
+            let straw = simulate_straw();
+            return Task::sip(straw, Message::FlashProgress, Message::FlashFinished);
+        }
+
         let Some(image) = self.image_path.clone() else {
             return Task::none();
         };
@@ -486,6 +548,64 @@ fn channel_button(
             button::secondary
         })
         .on_press(Message::ChannelSelected(channel))
+}
+
+fn get_disks(simulate: bool) -> Vec<Disk> {
+    if simulate {
+        simulate_disks()
+    } else {
+        disk::list_disks()
+    }
+}
+
+fn simulate_disks() -> Vec<Disk> {
+    vec![
+        Disk {
+            device: "/dev/sda".into(),
+            description: "SanDisk Ultra 64GB".into(),
+            size: 64_000_000_000,
+            is_removable: true,
+            bus_type: "USB".into(),
+        },
+        Disk {
+            device: "/dev/sdb".into(),
+            description: "Samsung T7 500GB".into(),
+            size: 500_107_862_016,
+            is_removable: true,
+            bus_type: "USB".into(),
+        },
+        Disk {
+            device: "/dev/nvme0n1".into(),
+            description: "WD Black SN750 1TB".into(),
+            size: 1_000_000_000_000,
+            is_removable: false,
+            bus_type: "NVMe".into(),
+        },
+    ]
+}
+
+fn simulate_tags() -> Task<Message> {
+    Task::perform(
+        async {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            Ok::<_, String>(vec![
+                "v1.0.0".to_string(),
+                "v0.9.0".to_string(),
+                "v0.8.0".to_string(),
+            ])
+        },
+        Message::TagsLoaded,
+    )
+}
+
+fn simulate_straw() -> impl Straw<(), f32, String> {
+    sipper(async move |mut straw| {
+        for i in 0..=100u8 {
+            let () = straw.send(f32::from(i)).await;
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        Ok::<(), String>(())
+    })
 }
 
 fn load_tags(channel: Channel) -> Task<Message> {
