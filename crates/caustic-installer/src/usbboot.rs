@@ -38,8 +38,18 @@ pub async fn run_rpiboot() -> Result<(), Error> {
         .to_string_lossy()
         .into_owned();
 
-    let mut cmd = build_elevated_command(&binary)?;
+    match run_command(&mut tokio::process::Command::new(&binary)).await {
+        Ok(()) => Ok(()),
+        #[cfg(target_os = "linux")]
+        Err(e) if should_retry_elevated(&e) => {
+            let mut cmd = build_elevated_command(&binary)?;
+            run_command(&mut cmd).await
+        }
+        Err(e) => Err(e),
+    }
+}
 
+async fn run_command(cmd: &mut tokio::process::Command) -> Result<(), Error> {
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let output = cmd
@@ -58,16 +68,25 @@ pub async fn run_rpiboot() -> Result<(), Error> {
 }
 
 #[cfg(target_os = "linux")]
-fn build_elevated_command(binary: &str) -> Result<tokio::process::Command, Error> {
-    if std::fs::OpenOptions::new()
-        .read(true)
-        .open("/dev/raw-gadget")
-        .is_ok()
-        || is_root()
-    {
-        return Ok(tokio::process::Command::new(binary));
+fn should_retry_elevated(err: &Error) -> bool {
+    if is_root() {
+        return false;
     }
 
+    let Error::ExecutionFailed(msg) = err else {
+        return false;
+    };
+
+    let lower = msg.to_lowercase();
+    lower.contains("permission denied")
+        || lower.contains("operation not permitted")
+        || lower.contains("could not claim interface")
+        || lower.contains("access denied")
+        || lower.contains("libusb_error_access")
+}
+
+#[cfg(target_os = "linux")]
+fn build_elevated_command(binary: &str) -> Result<tokio::process::Command, Error> {
     if which::which("pkexec").is_ok() {
         let mut cmd = tokio::process::Command::new("pkexec");
         cmd.arg(binary);
@@ -86,9 +105,4 @@ fn build_elevated_command(binary: &str) -> Result<tokio::process::Command, Error
 #[cfg(target_os = "linux")]
 fn is_root() -> bool {
     rustix::process::geteuid().as_raw() == 0
-}
-
-#[cfg(not(target_os = "linux"))]
-fn build_elevated_command(binary: &str) -> Result<tokio::process::Command, Error> {
-    Ok(tokio::process::Command::new(binary))
 }
