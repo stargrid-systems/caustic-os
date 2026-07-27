@@ -13,7 +13,8 @@ const VERSION_ANNOTATION: &str = "org.opencontainers.image.version";
 ///
 /// # Errors
 ///
-/// Returns [`Error::MissingAnnotation`] if the manifest has no version annotation.
+/// Returns [`Error::MissingAnnotation`] if the manifest has no version
+/// annotation.
 pub fn extract_version(manifest: &OciImageManifest) -> Result<String, Error> {
     manifest
         .annotations

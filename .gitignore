@@ -1,4 +1,5 @@
 /result*
 /secrets
 target/
+target-distrobox/
 formatter-result

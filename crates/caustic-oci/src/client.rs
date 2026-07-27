@@ -2,10 +2,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use futures_util::TryStreamExt;
+use oci_client::Reference;
 use oci_client::client::{Client, ClientConfig};
 use oci_client::manifest::{OciDescriptor, OciImageManifest, OciManifest};
 use oci_client::secrets::RegistryAuth;
-use oci_client::Reference;
 use tokio::io::AsyncWriteExt;
 
 use crate::Error;
@@ -100,19 +100,19 @@ pub async fn pull_blob(
         .pull_blob(&reference, layer, &mut file)
         .await
         .map_err(|e| Error::Fetch(e.to_string()))?;
-    file.flush()
-        .await
-        .map_err(|e| Error::Io(e.to_string()))?;
+    file.flush().await.map_err(|e| Error::Io(e.to_string()))?;
     Ok(())
 }
 
 /// Pull a single blob with streaming progress reporting.
 ///
-/// `progress` is called with `(bytes_downloaded, total_bytes)` after each chunk.
+/// `progress` is called with `(bytes_downloaded, total_bytes)` after each
+/// chunk.
 ///
 /// # Panics
 ///
-/// Panics if a chunk length exceeds `u64::MAX` (not possible on current platforms).
+/// Panics if a chunk length exceeds `u64::MAX` (not possible on current
+/// platforms).
 ///
 /// # Errors
 ///
@@ -159,9 +159,6 @@ pub async fn pull_blob_streaming(
         progress(downloaded, total);
     }
 
-    writer
-        .flush()
-        .await
-        .map_err(|e| Error::Io(e.to_string()))?;
+    writer.flush().await.map_err(|e| Error::Io(e.to_string()))?;
     Ok(())
 }
