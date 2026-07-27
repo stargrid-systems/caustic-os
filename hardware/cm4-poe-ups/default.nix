@@ -18,15 +18,7 @@ in
   config = lib.mkIf cfg.enable {
     hardware.i2c.enable = true;
 
-    boot.blacklistedKernelModules = [
-      "brcmfmac"
-      "brcmutil"
-      "bluetooth"
-      "bnep"
-      "btusb"
-      "hci_uart"
-    ];
-
+    # Kernel module blacklisting (bluetooth, wifi, audio) is owned by caustic.hardening.
     hardware.deviceTree = {
       enable = true;
       overlays = [
