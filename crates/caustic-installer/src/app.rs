@@ -706,7 +706,9 @@ where
         let (tx, mut rx) = tokio::sync::watch::channel(0.0f32);
 
         let progress: Arc<dyn Fn(u64, u64) + Send + Sync> = Arc::new(move |done, total| {
-            let pct = (done.min(total) * 100)
+            let pct = done
+                .min(total)
+                .saturating_mul(100)
                 .checked_div(total)
                 .map_or(0.0, |ratio| f32::from(u8::try_from(ratio).unwrap_or(100)));
             let _ = tx.send(pct);
