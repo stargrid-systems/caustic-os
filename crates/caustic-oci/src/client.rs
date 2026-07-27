@@ -151,7 +151,7 @@ pub async fn pull_blob_streaming(
             .write_all(&chunk)
             .await
             .map_err(|e| Error::Io(e.to_string()))?;
-        downloaded += u64::try_from(chunk.len()).unwrap_or(0);
+        downloaded += chunk.len() as u64;
         progress(downloaded, total);
     }
 

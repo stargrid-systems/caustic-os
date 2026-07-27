@@ -1,4 +1,5 @@
 use std::fmt::Write as _;
+use std::io::Read as _;
 use std::path::Path;
 
 use oci_client::manifest::OciImageManifest;
@@ -48,11 +49,20 @@ pub fn verify_sha256sums(dir: &Path) -> Result<(), Error> {
             .next()
             .ok_or_else(|| Error::Other("malformed SHA256SUMS line".to_string()))?;
         let path = dir.join(name);
-        let bytes = std::fs::read(&path)
-            .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
-
         let mut hasher = Sha256::new();
-        hasher.update(&bytes);
+        let mut file = std::fs::File::open(&path)
+            .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            let n = file
+                .read(&mut buf)
+                .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+
         let hash = hasher.finalize();
         let mut actual = String::with_capacity(hash.len() * 2);
         for byte in &hash {
