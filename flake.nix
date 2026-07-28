@@ -234,7 +234,7 @@
       };
 
       nixosConfigurations = {
-        dev = devNixosFor "x86_64-linux";
+        devVm = devNixosFor "x86_64-linux";
         production = prodNixosFor "aarch64-linux" { };
         devImage = prodNixosFor "aarch64-linux" {
           securebootKeys = null;
@@ -256,7 +256,7 @@
           '';
         }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
-          devVm = self.nixosConfigurations.dev.config.system.build.vm;
+          devVm = self.nixosConfigurations.devVm.config.system.build.vm;
         }
         // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
           productionImage = self.nixosConfigurations.production.config.system.build.image;
