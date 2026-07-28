@@ -149,7 +149,6 @@
           '';
         });
       };
-      apertureOverlay = osOverlay;
 
       devNixosFor =
         system:
@@ -223,7 +222,7 @@
           null;
     in
     {
-      overlays.default = apertureOverlay;
+      overlays.default = osOverlay;
 
       nixosModules = {
         cm4PoeUps = import ./hardware/cm4-poe-ups { inherit nixos-hardware; };
