@@ -125,7 +125,7 @@
         let
           craneLib = craneLibFor system;
           crate = craneLib.buildPackage {
-            src = craneLib.path ./crates/caustic-ota;
+            src = craneLib.cleanCargoSource ./crates/caustic-ota;
             strictDeps = true;
             doCheck = false;
           };
