@@ -289,6 +289,21 @@
         }
       );
 
+      tests = perSystem (
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        {
+          runtime = import ./checks/runtime-test.nix {
+            inherit
+              pkgs
+              self
+              ;
+          };
+        }
+      );
+
       devShells = perSystem (
         system:
         let
