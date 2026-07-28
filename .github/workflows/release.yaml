@@ -220,9 +220,39 @@ jobs:
           cosign sign --yes --key /tmp/cosign.key \
             ghcr.io/${{ github.repository }}-dev:${VERSION}
 
+  runtime-test:
+    name: Runtime test
+    needs: build-dev
+    runs-on: ubuntu-26.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Setup Nix with OCI cache
+        uses: ./.github/actions/setup-nix-cache
+        with:
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+
+      - name: Configure Nix for NixOS tests
+        run: |
+          echo "system-features = nixos-test benchmark big-parallel kvm" | sudo tee -a /etc/nix/nix.conf
+          sudo systemctl restart nix-daemon
+
+      - name: Run runtime test
+        run: nix build .#tests.aarch64-linux.runtime -L --print-build-logs
+
   build-prod:
     name: Build prod image
-    needs: [tag, build-dev]
+    needs: [tag, runtime-test]
     runs-on: ubuntu-26.04-arm
     environment: prod
     env:
@@ -325,3 +355,19 @@ jobs:
           VERSION: ${{ needs.tag.outputs.version }}
         run: |
           gh release edit "${VERSION}" --repo ${{ github.repository }} --draft=false
+
+  cleanup-on-failure:
+    name: Cleanup stale draft
+    needs: [tag, publish]
+    if: always() && needs.tag.result == 'success' && needs.publish.result != 'success'
+    runs-on: ubuntu-slim
+    steps:
+      - name: Delete draft release and tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          gh release delete "${VERSION}" \
+            --repo ${{ github.repository }} \
+            --cleanup-tag \
+            --yes
