@@ -77,3 +77,126 @@ pub fn verify_sha256sums(dir: &Path) -> Result<(), Error> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use super::*;
+
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn unique_dir() -> PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("caustic-oci-test-{pid}-{n}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        let hash = Sha256::digest(bytes);
+        let mut out = String::with_capacity(hash.len() * 2);
+        for byte in &hash {
+            write!(out, "{byte:02x}").expect("formatting hex into a String never fails");
+        }
+        out
+    }
+
+    fn write_file(dir: &Path, name: &str, contents: &[u8]) {
+        std::fs::write(dir.join(name), contents).expect("write file");
+    }
+
+    fn write_sums(dir: &Path, entries: &[(&str, &[u8])]) {
+        let mut content = String::new();
+        for &(name, data) in entries {
+            write_file(dir, name, data);
+            writeln!(content, "{}  {name}", sha256_hex(data)).expect("format into String");
+        }
+        std::fs::write(dir.join("SHA256SUMS"), content).expect("write SHA256SUMS");
+    }
+
+    #[test]
+    fn extract_version_returns_annotation() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert(
+            "org.opencontainers.image.version".to_string(),
+            "1.2.3".to_string(),
+        );
+        let manifest = OciImageManifest {
+            annotations: Some(annotations),
+            ..Default::default()
+        };
+        assert_eq!(extract_version(&manifest).unwrap(), "1.2.3");
+    }
+
+    #[test]
+    fn extract_version_missing_when_annotations_none() {
+        let manifest = OciImageManifest::default();
+        assert!(matches!(
+            extract_version(&manifest),
+            Err(Error::MissingAnnotation(_))
+        ));
+    }
+
+    #[test]
+    fn extract_version_missing_when_key_absent() {
+        let manifest = OciImageManifest {
+            annotations: Some(BTreeMap::new()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            extract_version(&manifest),
+            Err(Error::MissingAnnotation(_))
+        ));
+    }
+
+    #[test]
+    fn verify_sha256sums_ok_without_sums_file() {
+        let dir = unique_dir();
+        assert!(verify_sha256sums(&dir).is_ok());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn verify_sha256sums_ok_with_matching_entry() {
+        let dir = unique_dir();
+        write_sums(&dir, &[("root.img", b"hello world")]);
+        assert!(verify_sha256sums(&dir).is_ok());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn verify_sha256sums_ok_with_multiple_entries() {
+        let dir = unique_dir();
+        write_sums(
+            &dir,
+            &[("a.img", b"aaaa"), ("b.img", b"bbbb"), ("c.img", b"cccc")],
+        );
+        assert!(verify_sha256sums(&dir).is_ok());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn verify_sha256sums_rejects_wrong_checksum() {
+        let dir = unique_dir();
+        write_file(&dir, "root.img", b"hello world");
+        std::fs::write(dir.join("SHA256SUMS"), "deadbeef  root.img\n").expect("write SHA256SUMS");
+        assert!(matches!(
+            verify_sha256sums(&dir),
+            Err(Error::ChecksumMismatch(name)) if name == "root.img"
+        ));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn verify_sha256sums_rejects_malformed_line() {
+        let dir = unique_dir();
+        std::fs::write(dir.join("SHA256SUMS"), "not-a-valid-line\n").expect("write SHA256SUMS");
+        assert!(matches!(verify_sha256sums(&dir), Err(Error::Other(_))));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
