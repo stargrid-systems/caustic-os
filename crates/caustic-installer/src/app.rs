@@ -502,10 +502,10 @@ impl Installer {
         self.step = Step::Downloading { progress: 0.0 };
 
         let straw = run_with_progress(move |progress| async move {
-            let manifest = caustic_oci::fetch_manifest(&registry, &tag).await?;
+            let manifest = caustic_oci::fetch_manifest(&registry, &tag, None).await?;
             let layer = caustic_oci::find_layer_by_suffix(&manifest, ".img")
                 .ok_or(caustic_oci::Error::NoImageLayer)?;
-            caustic_oci::pull_blob_streaming(&registry, &tag, layer, &partial_path, progress)
+            caustic_oci::pull_blob_streaming(&registry, &tag, layer, &partial_path, progress, None)
                 .await?;
             tokio::fs::rename(&partial_path, &image_path)
                 .await
@@ -665,7 +665,7 @@ fn load_tags(channel: Channel) -> Task<Message> {
     let registry = channel.registry().to_string();
     Task::perform(
         async move {
-            caustic_oci::list_tags(&registry)
+            caustic_oci::list_tags(&registry, None)
                 .await
                 .map(|tags| {
                     tags.into_iter()

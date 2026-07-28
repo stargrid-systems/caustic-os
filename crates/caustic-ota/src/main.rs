@@ -53,19 +53,22 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+    let token = std::env::var("CAUSTIC_OTA_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty());
     match cli.command {
-        Commands::Check { registry, tag } => check(&registry, &tag).await,
+        Commands::Check { registry, tag } => check(&registry, &tag, token.as_deref()).await,
         Commands::Update {
             registry,
             tag,
             force,
-        } => update(&registry, &tag, force).await,
+        } => update(&registry, &tag, force, token.as_deref()).await,
         Commands::FactoryReset => factory_reset(),
     }
 }
 
-async fn check(registry: &str, tag: &str) -> Result<()> {
-    let manifest = caustic_oci::fetch_manifest(registry, tag)
+async fn check(registry: &str, tag: &str, token: Option<&str>) -> Result<()> {
+    let manifest = caustic_oci::fetch_manifest(registry, tag, token)
         .await
         .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
     let version = caustic_oci::extract_version(&manifest)?;
@@ -82,12 +85,12 @@ async fn check(registry: &str, tag: &str) -> Result<()> {
     Ok(())
 }
 
-async fn update(registry: &str, tag: &str, force: bool) -> Result<()> {
+async fn update(registry: &str, tag: &str, force: bool, token: Option<&str>) -> Result<()> {
     if !force {
         verify_boot_healthy()?;
     }
 
-    let manifest = caustic_oci::fetch_manifest(registry, tag)
+    let manifest = caustic_oci::fetch_manifest(registry, tag, token)
         .await
         .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
     let version = caustic_oci::extract_version(&manifest)?;
@@ -104,7 +107,7 @@ async fn update(registry: &str, tag: &str, force: bool) -> Result<()> {
     fs::create_dir_all(staging).context("create staging dir")?;
     clear_dir(staging)?;
 
-    pull_layers(registry, tag, &manifest, staging).await?;
+    pull_layers(registry, tag, &manifest, staging, token).await?;
     caustic_oci::verify_sha256sums(staging).context("verify checksums")?;
 
     tracing::info!("invoking systemd-sysupdate");
@@ -152,6 +155,7 @@ async fn pull_layers(
     tag: &str,
     manifest: &OciImageManifest,
     staging: &Path,
+    token: Option<&str>,
 ) -> Result<()> {
     for layer in &manifest.layers {
         let name = layer
@@ -168,7 +172,7 @@ async fn pull_layers(
 
         tracing::info!(%name, digest = %layer.digest, "pulling layer");
         let dst = staging.join(name);
-        caustic_oci::pull_blob(registry, tag, layer, &dst)
+        caustic_oci::pull_blob(registry, tag, layer, &dst, token)
             .await
             .with_context(|| format!("pull layer {name}"))?;
         tracing::info!(%name, "pulled");

@@ -18,18 +18,24 @@ fn parse_ref(registry: &str, tag: &str) -> Result<Reference, Error> {
         .map_err(|e: oci_client::ParseError| Error::Parse(e.to_string()))
 }
 
+fn auth_for(token: Option<&str>) -> RegistryAuth {
+    token.map_or(RegistryAuth::Anonymous, |t| {
+        RegistryAuth::Bearer(t.to_string())
+    })
+}
+
 /// List all tags for the given registry repository.
 ///
 /// # Errors
 ///
 /// Returns [`Error::Parse`] if `registry` is not a valid reference.
 /// Returns [`Error::Fetch`] if the registry request fails.
-pub async fn list_tags(registry: &str) -> Result<Vec<String>, Error> {
+pub async fn list_tags(registry: &str, token: Option<&str>) -> Result<Vec<String>, Error> {
     let reference: Reference = registry
         .parse()
         .map_err(|e: oci_client::ParseError| Error::Parse(e.to_string()))?;
     let client = Client::new(ClientConfig::default());
-    let auth = RegistryAuth::Anonymous;
+    let auth = auth_for(token);
     let response = client
         .list_tags(&reference, &auth, None, None)
         .await
@@ -44,10 +50,14 @@ pub async fn list_tags(registry: &str) -> Result<Vec<String>, Error> {
 /// Returns [`Error::Parse`] if the reference cannot be parsed.
 /// Returns [`Error::Fetch`] if the registry request fails.
 /// Returns [`Error::UnexpectedManifestType`] if the manifest is an image index.
-pub async fn fetch_manifest(registry: &str, tag: &str) -> Result<OciImageManifest, Error> {
+pub async fn fetch_manifest(
+    registry: &str,
+    tag: &str,
+    token: Option<&str>,
+) -> Result<OciImageManifest, Error> {
     let reference = parse_ref(registry, tag)?;
     let client = Client::new(ClientConfig::default());
-    let auth = RegistryAuth::Anonymous;
+    let auth = auth_for(token);
     let (manifest, _) = client
         .pull_manifest(&reference, &auth)
         .await
@@ -86,11 +96,12 @@ pub async fn pull_blob(
     tag: &str,
     layer: &OciDescriptor,
     dest: &Path,
+    token: Option<&str>,
 ) -> Result<(), Error> {
     let reference = parse_ref(registry, tag)?;
     let client = Client::new(ClientConfig::default());
     client
-        .store_auth_if_needed(reference.resolve_registry(), &RegistryAuth::Anonymous)
+        .store_auth_if_needed(reference.resolve_registry(), &auth_for(token))
         .await;
 
     let mut file = tokio::fs::File::create(dest)
@@ -125,11 +136,12 @@ pub async fn pull_blob_streaming(
     layer: &OciDescriptor,
     dest: &Path,
     progress: Arc<dyn Fn(u64, u64) + Send + Sync>,
+    token: Option<&str>,
 ) -> Result<(), Error> {
     let reference = parse_ref(registry, tag)?;
     let client = Client::new(ClientConfig::default());
     client
-        .store_auth_if_needed(reference.resolve_registry(), &RegistryAuth::Anonymous)
+        .store_auth_if_needed(reference.resolve_registry(), &auth_for(token))
         .await;
 
     let stream = client
