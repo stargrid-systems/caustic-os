@@ -10,10 +10,20 @@ let
 
   finalImage = build.image.override { split = true; };
   verityImgAttrs = builtins.fromJSON (builtins.readFile "${finalImage}/repart-output.json");
-  # repart-output.json partitions are ordered by partition number:
-  # [ esp, store-verity, store, persist ]
-  usrAttrs = builtins.elemAt verityImgAttrs 2;
-  verityAttrs = builtins.elemAt verityImgAttrs 1;
+  partitionBySplitName =
+    splitName:
+    let
+      expected = "${baseName}.${splitName}.raw";
+      hasSplit =
+        p: p ? split_path && builtins.isString p.split_path && builtins.baseNameOf p.split_path == expected;
+      matches = builtins.filter hasSplit verityImgAttrs;
+    in
+    if builtins.length matches == 1 then
+      builtins.head matches
+    else
+      throw "repart-output: expected exactly one partition with split_path=\"${expected}\", found ${toString (builtins.length matches)}";
+  usrAttrs = partitionBySplitName "usr";
+  verityAttrs = partitionBySplitName "verity";
   usrUuid = usrAttrs.uuid;
   verityUuid = verityAttrs.uuid;
 
