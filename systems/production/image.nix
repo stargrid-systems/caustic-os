@@ -6,8 +6,6 @@
   ...
 }:
 let
-  rpiFw = "${pkgs.raspberrypifw}/share/raspberrypi/boot";
-
   rpi4Uefi = pkgs.fetchzip {
     url = "https://github.com/pftf/RPi4/releases/download/v1.52/RPi4_UEFI_Firmware_v1.52.zip";
     hash = "sha256-nL/fKtVzxpaIjiy0nCG/K94/nN5jG2Bzae3d3tUoIMo=";
@@ -25,6 +23,8 @@ let
     disable_overscan=1
     device_tree_address=0x3e0000
     device_tree_end=0x400000
+    dtoverlay=miniuart-bt
+    dtoverlay=upstream-pi4
   '';
 
   unsignedSystemdBoot = "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${pkgs.stdenv.hostPlatform.efiArch}.efi";
@@ -87,10 +87,11 @@ in
         contents = {
           "/RPI_EFI.fd".source = "${rpi4Uefi}/RPI_EFI.fd";
           "/config.txt".source = configTxt;
-          "/start4.elf".source = "${rpiFw}/start4.elf";
-          "/fixup4.dat".source = "${rpiFw}/fixup4.dat";
-          "/bcm2711-rpi-cm4.dtb".source =
-            "${config.hardware.deviceTree.package}/broadcom/bcm2711-rpi-cm4.dtb";
+          "/start4.elf".source = "${rpi4Uefi}/start4.elf";
+          "/fixup4.dat".source = "${rpi4Uefi}/fixup4.dat";
+          "/bcm2711-rpi-cm4.dtb".source = "${rpi4Uefi}/bcm2711-rpi-cm4.dtb";
+          "/overlays/miniuart-bt.dtbo".source = "${rpi4Uefi}/overlays/miniuart-bt.dtbo";
+          "/overlays/upstream-pi4.dtbo".source = "${rpi4Uefi}/overlays/upstream-pi4.dtbo";
           "/EFI/BOOT/${bootEfiName}".source = systemdBoot;
           "/EFI/systemd/${systemdEfiName}".source = systemdBoot;
           "/loader/loader.conf".source = loaderConf;
