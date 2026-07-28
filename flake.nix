@@ -288,13 +288,11 @@
         system:
         let
           pkgs = pkgsFor system;
-          inherit (nixpkgs) lib;
         in
         {
           runtime = import ./checks/runtime-test.nix {
             inherit
               pkgs
-              lib
               self
               ;
           };

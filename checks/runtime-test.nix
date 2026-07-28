@@ -1,6 +1,5 @@
 {
   pkgs,
-  lib,
   self,
 }:
 let
@@ -10,11 +9,7 @@ pkgs.testers.runNixOSTest {
   name = "caustic-runtime";
 
   nodes.machine =
-    {
-      pkgs,
-      config,
-      ...
-    }:
+    { pkgs, ... }:
     {
       imports = [
         self.nixosModules.caustic
@@ -83,8 +78,9 @@ pkgs.testers.runNixOSTest {
       with subtest("caustic-ota timer is active"):
           machine.wait_for_unit("caustic-ota.timer")
 
-      with subtest("persisted data survives reboot"):
+      with subtest("impermanence bind-mounts /persist into service dirs"):
           machine.succeed("echo survived > /var/lib/aperture/persist-test")
+          machine.succeed("test -f /persist/var/lib/aperture/persist-test")
           machine.reboot()
           machine.wait_for_unit("multi-user.target")
           assert "survived" in machine.succeed("cat /var/lib/aperture/persist-test")
