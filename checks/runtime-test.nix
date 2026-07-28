@@ -3,13 +3,16 @@
   lib,
   self,
 }:
+let
+  inherit (pkgs.stdenv.hostPlatform) system;
+in
 pkgs.testers.runNixOSTest {
   name = "caustic-runtime";
 
   nodes.machine =
     {
+      pkgs,
       config,
-      modulesPath,
       ...
     }:
     {
@@ -21,8 +24,6 @@ pkgs.testers.runNixOSTest {
         self.nixosModules.persist
       ];
 
-      nixpkgs.overlays = [ self.overlays.default ];
-
       caustic = {
         hardening.enable = true;
         networking.enable = true;
@@ -32,8 +33,14 @@ pkgs.testers.runNixOSTest {
       };
 
       services = {
-        aperture.enable = true;
-        caustic-ota.enable = true;
+        aperture = {
+          enable = true;
+          package = self.packages.${system}.aperture;
+        };
+        caustic-ota = {
+          enable = true;
+          package = self.packages.${system}.caustic-ota;
+        };
         dropbear.enable = true;
       };
 

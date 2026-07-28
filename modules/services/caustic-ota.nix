@@ -11,6 +11,8 @@ in
   options.services.caustic-ota = {
     enable = lib.mkEnableOption "caustic-ota update daemon";
 
+    package = lib.mkPackageOption pkgs "caustic-ota" { };
+
     registry = lib.mkOption {
       type = lib.types.str;
       default = "ghcr.io/stargrid-systems/caustic-os";
@@ -37,7 +39,7 @@ in
       wants = [ "network-online.target" ];
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${pkgs.caustic-ota}/bin/caustic-ota update --registry ${cfg.registry} --tag ${cfg.tag}";
+        ExecStart = "${lib.getExe cfg.package} update --registry ${cfg.registry} --tag ${cfg.tag}";
         StateDirectory = "caustic-ota";
         ProtectSystem = "strict";
         ReadWritePaths = [
