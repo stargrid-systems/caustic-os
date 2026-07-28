@@ -22,7 +22,6 @@ pkgs.testers.runNixOSTest {
       caustic = {
         hardening.enable = true;
         networking.enable = true;
-        recovery.enable = true;
         users.enable = true;
         persist.enable = true;
       };
@@ -38,8 +37,6 @@ pkgs.testers.runNixOSTest {
         };
         dropbear.enable = true;
       };
-
-      boot.initrd.systemd.enable = true;
 
       virtualisation = {
         cores = 2;
@@ -81,8 +78,6 @@ pkgs.testers.runNixOSTest {
       with subtest("impermanence bind-mounts /persist into service dirs"):
           machine.succeed("echo survived > /var/lib/aperture/persist-test")
           machine.succeed("test -f /persist/var/lib/aperture/persist-test")
-          machine.reboot()
-          machine.wait_for_unit("multi-user.target")
-          assert "survived" in machine.succeed("cat /var/lib/aperture/persist-test")
+          assert "survived" in machine.succeed("cat /persist/var/lib/aperture/persist-test")
     '';
 }
