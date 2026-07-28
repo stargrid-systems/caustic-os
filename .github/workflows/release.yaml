@@ -221,7 +221,7 @@ jobs:
             ghcr.io/${{ github.repository }}-dev:${VERSION}
 
   build-prod:
-    name: Build prod image (promotion)
+    name: Build prod image
     needs: [tag, build-dev]
     runs-on: ubuntu-26.04-arm
     environment: prod
