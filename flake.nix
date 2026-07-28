@@ -124,8 +124,13 @@
         system:
         let
           craneLib = craneLibFor system;
+          crateName = craneLib.crateNameFromCargoToml {
+            cargoToml = ./crates/caustic-ota/Cargo.toml;
+          };
           crate = craneLib.buildPackage {
-            src = craneLib.cleanCargoSource ./crates/caustic-ota;
+            src = craneLib.cleanCargoSource ./.;
+            inherit (crateName) pname version;
+            cargoExtraArgs = "--package caustic-ota";
             strictDeps = true;
             doCheck = false;
           };
