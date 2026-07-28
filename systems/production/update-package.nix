@@ -50,6 +50,10 @@ in
             name = "${id}_${version}_${usrUuid}.usr";
             path = usrDecompressed;
           }
+          {
+            name = "${id}_${version}.img";
+            path = imgDecompressed;
+          }
         ];
 
         createHash =
@@ -62,10 +66,6 @@ in
       pkgs.linkFarm "${id}-update-package" (
         updateFiles
         ++ [
-          {
-            name = "${id}_${version}.img";
-            path = imgDecompressed;
-          }
           {
             name = "SHA256SUMS";
             path = pkgs.writeText "sha256sums" (lib.concatLines (map createHash updateFiles));
