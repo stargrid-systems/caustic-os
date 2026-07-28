@@ -190,8 +190,6 @@ jobs:
         run: |
           mkdir -p artifact
           cp -L update/* artifact/
-          rm -f artifact/SHA256SUMS
-          sha256sum artifact/* > artifact/SHA256SUMS
 
       - name: Install oras
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d  # v2.0.1
@@ -286,8 +284,6 @@ jobs:
         run: |
           mkdir -p artifact
           cp -L update/* artifact/
-          rm -f artifact/SHA256SUMS
-          sha256sum artifact/* > artifact/SHA256SUMS
 
       - name: Install oras
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507b5446e1dc9d  # v2.0.1
