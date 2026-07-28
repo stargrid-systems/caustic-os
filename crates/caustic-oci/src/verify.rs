@@ -26,10 +26,9 @@ pub fn extract_version(manifest: &OciImageManifest) -> Result<String, Error> {
 
 /// Verify SHA256 checksums listed in the `SHA256SUMS` file inside `dir`.
 ///
-/// Returns `Ok(())` if the file does not exist.
-///
 /// # Errors
 ///
+/// Returns [`Error::MissingSha256Sums`] if the SHA256SUMS file is absent.
 /// Returns [`Error::Io`] if a listed file cannot be read.
 /// Returns [`Error::Other`] if the SHA256SUMS file is malformed.
 /// Returns [`Error::ChecksumMismatch`] if a checksum does not match.
@@ -37,8 +36,8 @@ pub fn verify_sha256sums(dir: &Path) -> Result<(), Error> {
     let sums_path = dir.join("SHA256SUMS");
     let content = match std::fs::read_to_string(&sums_path) {
         Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(Error::Io(e.to_string())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Error::MissingSha256Sums),
+        Err(e) => return Err(Error::Io(format!("{}: {e}", sums_path.display()))),
     };
 
     for line in content.lines() {
@@ -155,9 +154,12 @@ mod tests {
     }
 
     #[test]
-    fn verify_sha256sums_ok_without_sums_file() {
+    fn verify_sha256sums_fails_when_sums_missing() {
         let dir = unique_dir();
-        assert!(verify_sha256sums(&dir).is_ok());
+        assert!(matches!(
+            verify_sha256sums(&dir),
+            Err(Error::MissingSha256Sums)
+        ));
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -19,6 +19,7 @@ pub enum Error {
     UnexpectedManifestType,
     MissingAnnotation(String),
     ChecksumMismatch(String),
+    MissingSha256Sums,
     Other(String),
 }
 
@@ -32,6 +33,7 @@ impl std::fmt::Display for Error {
             Self::UnexpectedManifestType => write!(f, "Expected image manifest, got image index"),
             Self::MissingAnnotation(s) => write!(f, "Manifest missing {s} annotation"),
             Self::ChecksumMismatch(s) => write!(f, "Checksum mismatch for {s}"),
+            Self::MissingSha256Sums => write!(f, "SHA256SUMS file is missing"),
             Self::Other(s) => write!(f, "{s}"),
         }
     }
