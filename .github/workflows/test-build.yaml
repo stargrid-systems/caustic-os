@@ -55,6 +55,8 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Build
         env:
@@ -70,7 +72,3 @@ jobs:
             ${{ inputs.target }} \
             --out-link result \
             --print-build-logs
-
-      - name: Save cache
-        if: always()
-        uses: ./.github/actions/setup-nix-cache/save

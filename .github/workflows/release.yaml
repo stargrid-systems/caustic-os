@@ -161,6 +161,9 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          out-link: update
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Build dev update package
         run: |
@@ -169,12 +172,6 @@ jobs:
             .#nixosConfigurations.devImage.config.system.build.updatePackage \
             --out-link update \
             --print-build-logs
-
-      - name: Save cache
-        if: always()
-        uses: ./.github/actions/setup-nix-cache/save
-        with:
-          out-link: update
 
       - name: Compose OCI artifact
         run: |
@@ -225,12 +222,14 @@ jobs:
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
+          if test -e /dev/kvm; then sudo chmod 0666 /dev/kvm; fi
 
       - name: Setup Nix with OCI cache
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Configure Nix for NixOS tests
         run: |
@@ -239,10 +238,6 @@ jobs:
 
       - name: Run runtime test
         run: nix build .#tests.aarch64-linux.runtime -L --print-build-logs
-
-      - name: Save cache
-        if: always()
-        uses: ./.github/actions/setup-nix-cache/save
 
   build-prod:
     name: Build prod image
@@ -276,6 +271,9 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          out-link: update
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Build production update package
         env:
@@ -285,12 +283,6 @@ jobs:
             .#nixosConfigurations.production.config.system.build.updatePackage \
             --out-link update \
             --print-build-logs
-
-      - name: Save cache
-        if: always()
-        uses: ./.github/actions/setup-nix-cache/save
-        with:
-          out-link: update
 
       - name: Compose OCI artifact
         run: |

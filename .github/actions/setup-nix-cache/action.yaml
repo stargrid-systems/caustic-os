@@ -1,74 +1,28 @@
 name: Setup Nix with OCI cache
 
 description: |
-  Installs Determinate Nix and starts the vendored nixcache-oci proxy as a
-  local substituter backed by ghcr.io. Call once per job, before any
-  `nix build` step. The proxy keeps running in the background for the
-  lifetime of the job; the runner VM is torn down at the end so no
-  explicit cleanup is needed.
+  Installs Determinate Nix and starts the nixcache-oci proxy as a local
+  substituter backed by ghcr.io. Automatically uploads locally-built store
+  paths at the end of the job via the post hook.
 
   Required caller env:
-    NIX_CACHE_PRIVATE_KEY  nix cache signing key (secret), used by the
-                           upload step later in the job.
-
-  Required inputs:
-    public-key             matching public key, normally passed from
-                           the calling workflow's vars.NIX_CACHE_PUBLIC_KEY
-                           (composite actions cannot read the vars context
-                           directly).
+    NIX_CACHE_PRIVATE_KEY  nix cache signing key (secret)
 
 inputs:
   public-key:
     description: Public key for the nix cache, used to validate signed NARs.
     required: true
+  out-link:
+    description: Nix output symlink to record as a GC root in the cache index.
+    required: false
+    default: result
+  save:
+    description: Upload locally-built paths at the end of the job via the post hook.
+    required: false
+    default: "true"
 
 runs:
-  using: composite
-  steps:
-    - name: Write nix cache signing key
-      shell: bash
-      env:
-        NIX_CACHE_PRIVATE_KEY: ${{ env.NIX_CACHE_PRIVATE_KEY }}
-      run: |
-        if [[ -z "$NIX_CACHE_PRIVATE_KEY" ]]; then
-          echo "::notice::NIX_CACHE_PRIVATE_KEY is not set; cache uploads will be unsigned"
-          exit 0
-        fi
-        printf '%s\n' "$NIX_CACHE_PRIVATE_KEY" > /tmp/nix-cache.sec
-        chmod 600 /tmp/nix-cache.sec
-        echo "NIXCACHE_SIGNING_KEY_FILE=/tmp/nix-cache.sec" >> "$GITHUB_ENV"
-
-    - name: Start nixcache-oci proxy
-      id: proxy
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-        NIXCACHE_REPO: ${{ github.repository }}
-        NIXCACHE_LISTEN: 127.0.0.1
-        NIXCACHE_PORT: "37515"
-        NIXCACHE_UPSTREAM: ""
-      run: |
-        nohup python3 "$GITHUB_ACTION_PATH/proxy/main.py" \
-          >/tmp/nixcache-proxy.log 2>&1 &
-        echo $! > /tmp/nixcache-proxy.pid
-
-        for i in $(seq 1 30); do
-          if curl -fs --max-time 2 http://127.0.0.1:37515/nix-cache-info >/dev/null 2>&1; then
-            echo "Proxy ready (pid=$(cat /tmp/nixcache-proxy.pid))"
-            echo "proxy-ready=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          sleep 1
-        done
-
-        echo "proxy-ready=false" >> "$GITHUB_OUTPUT"
-        echo "::warning::nixcache-oci proxy did not become ready; continuing without it"
-        cat /tmp/nixcache-proxy.log || true
-
-    - name: Install Determinate Nix
-      uses: DeterminateSystems/determinate-nix-action@d96678350ffd6a456235832eb11e1c491589b7bb  # v3.21.8
-      with:
-        extra-conf: |
-          ${{ steps.proxy.outputs.proxy-ready == 'true' && 'extra-substituters = http://127.0.0.1:37515' || '' }}
-          ${{ steps.proxy.outputs.proxy-ready == 'true' && 'extra-trusted-substituters = http://127.0.0.1:37515' || '' }}
-          extra-trusted-public-keys = ${{ inputs.public-key }}
+  using: node24
+  main: main.js
+  post: post.js
+  post-if: always()

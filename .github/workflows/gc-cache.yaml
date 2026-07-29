@@ -38,13 +38,10 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          save: false
 
       - name: Compute live closure
         run: |
-          # Both release artifacts share the same aarch64-linux closure
-          # for most paths, so building just devImage is enough to mark
-          # the live set. Production-only paths (signed UKI) get evicted
-          # by retention and rebuilt cheaply on the next release.
           nix build --no-link \
             .#nixosConfigurations.devImage.config.system.build.updatePackage
           nix path-info --recursive \
@@ -57,73 +54,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIXCACHE_REPO: ${{ github.repository }}
-          RETENTION_DAYS: ${{ inputs.retention_days || '30' }}
-          DRY_RUN: ${{ github.event_name == 'schedule' || inputs.dry_run }}
         run: |
-          source .github/actions/setup-nix-cache/lib/cache-builder.sh
-          cutoff=$(date -u -d "${RETENTION_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
-          echo "Retention: ${RETENTION_DAYS} days (cutoff: ${cutoff})"
-          echo "Dry run: ${DRY_RUN}"
-
-          oci_get_token
-          existing_manifest=$(oci_get_manifest "cache-index")
-          if [[ -z "$existing_manifest" ]]; then
-            echo "No cache index found, nothing to GC"
-            exit 0
+          args=()
+          if [[ "${{ github.event_name == 'schedule' || inputs.dry_run }}" == "true" ]]; then
+            args+=(--dry-run)
           fi
-          index_digest=$(echo "$existing_manifest" | jq -r '.layers[0].digest // empty')
-          [[ -n "$index_digest" ]] || { echo "Empty index"; exit 0; }
-
-          index_file="${RUNNER_TEMP}/current-index.json"
-          oci_get_blob "$index_digest" > "$index_file"
-
-          # The python script writes a marker file if (and only if) it
-          # actually pruned entries in non-dry-run mode. We then use that
-          # marker to decide whether to re-upload the index manifest.
-          marker="${RUNNER_TEMP}/index-updated"
-          rm -f "$marker"
-
-          live_hashes_file="${RUNNER_TEMP}/live-hashes.txt"
-          MARKER_FILE="$marker" python3 - "$cutoff" "$DRY_RUN" "$index_file" "$live_hashes_file" <<'PYEOF'
-          import json, os, sys
-          cutoff, dry_run, index_file, live_file, marker = (
-              sys.argv[1], sys.argv[2] == "true", sys.argv[3], sys.argv[4], os.environ["MARKER_FILE"]
-          )
-          with open(index_file) as f:
-              index = json.load(f)
-          with open(live_file) as f:
-              live = set(f.read().strip().split("\n"))
-          keep, delete = {}, []
-          for h, entry in index.get("entries", {}).items():
-              added = entry.get("added", "2099-01-01T00:00:00Z")
-              if h in live or added >= cutoff:
-                  keep[h] = entry
-              else:
-                  delete.append((h, entry))
-                  print(f"DELETE: {h} ({entry.get('name', '?')}) added={added}")
-          print(f"Total: {len(keep)} keep, {len(delete)} delete")
-          if dry_run or not delete:
-              sys.exit(0)
-          index["entries"] = keep
-          index["gc_roots"] = [h for h in index.get("gc_roots", []) if h in keep]
-          with open(index_file, "w") as f:
-              json.dump(index, f, indent=2, sort_keys=True)
-          open(marker, "w").close()
-          PYEOF
-
-          [[ "$DRY_RUN" == "true" ]] && exit 0
-          [[ -f "$marker" ]] || { echo "Nothing pruned"; exit 0; }
-
-          index_digest=$(oci_push_blob "$index_file")
-          index_size=$(stat -c%s "$index_file")
-          config_file=$(mktemp); echo '{}' > "$config_file"
-          config_digest=$(oci_push_blob "$config_file")
-          config_size=$(stat -c%s "$config_file")
-          manifest=$(jq -n \
-            --arg cd "$config_digest" --argjson cs "$config_size" \
-            --arg id "$index_digest" --argjson is "$index_size" \
-            '{schemaVersion:2, mediaType:"application/vnd.oci.image.manifest.v1+json",
-              config:{mediaType:"application/vnd.oci.image.config.v1+json",digest:$cd,size:$cs},
-              layers:[{mediaType:"application/vnd.nix.cache.index.v1+json",digest:$id,size:$is}]}')
-          oci_push_manifest "cache-index" "$manifest"
-          echo "GC complete, index updated"
+          uv run --project .github/actions/setup-nix-cache nixcache-gc \
+            "${RUNNER_TEMP}/live-hashes.txt" \
+            --retention-days "${{ inputs.retention_days || '30' }}" \
+            "${args[@]}"
