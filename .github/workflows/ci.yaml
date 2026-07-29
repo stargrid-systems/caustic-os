@@ -24,6 +24,8 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: nix flake check
         run: nix flake check --print-build-logs
@@ -65,6 +67,8 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Evaluate flake for aarch64-linux
         run: nix flake show --system aarch64-linux --print-build-logs
@@ -89,6 +93,8 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Configure Nix for NixOS tests
         run: |

@@ -162,6 +162,8 @@ jobs:
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
           out-link: update
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Build dev update package
         run: |
@@ -226,6 +228,8 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Configure Nix for NixOS tests
         run: |
@@ -268,6 +272,8 @@ jobs:
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
           out-link: update
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Build production update package
         env:

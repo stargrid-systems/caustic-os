@@ -55,6 +55,8 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Build
         env:

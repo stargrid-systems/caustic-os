@@ -148,6 +148,12 @@ class OCIClient:
                         self._oci_token = data.get("token", self._gh_token)
                         self._oci_token_time = time.time()
                         return self._oci_token
+                except urllib.error.HTTPError as e:
+                    body = e.read().decode()[:200]
+                    err(f"Token exchange failed (HTTP {e.code}): {body}")
+                    self._oci_token = self._gh_token
+                    self._oci_token_time = time.time()
+                    return self._oci_token
                 except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
                     self._oci_token = self._gh_token
                     self._oci_token_time = time.time()
