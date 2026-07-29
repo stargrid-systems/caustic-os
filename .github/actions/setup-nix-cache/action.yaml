@@ -1,7 +1,7 @@
 name: Setup Nix with OCI cache
 
 description: |
-  Installs Determinate Nix and starts the vendored nixcache-oci proxy as a
+  Installs Determinate Nix and starts the nixcache-oci proxy as a
   local substituter backed by ghcr.io. Call once per job, before any
   `nix build` step. The proxy keeps running in the background for the
   lifetime of the job; the runner VM is torn down at the end so no
