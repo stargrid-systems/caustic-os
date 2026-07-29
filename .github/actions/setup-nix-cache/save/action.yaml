@@ -21,13 +21,4 @@ runs:
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
         NIXCACHE_REPO: ${{ github.repository }}
       run: |
-        source ${{ github.action_path }}/../lib/cache-builder.sh
-        upload_list=$(find_locally_built_paths)
-        mapfile -t upload_array <<< "$upload_list"
-        if [[ -z "${upload_array[0]:-}" ]]; then
-          echo "Nothing to upload; store has no locally-built paths"
-          exit 0
-        fi
-        export_paths_directly "${upload_array[@]}"
-        top_level=$(nix path-info ${{ inputs.out-link }})
-        upload_to_oci "$top_level"
+        python3 ${{ github.action_path }}/../lib/upload.py --out-link ${{ inputs.out-link }}
