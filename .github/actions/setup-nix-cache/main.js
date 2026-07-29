@@ -40,7 +40,7 @@ console.log('Syncing nixcache-oci project...');
 execSync('uv sync --frozen', { cwd: actionPath, stdio: 'inherit' });
 
 console.log('Starting nixcache-oci proxy...');
-const proxyEnv = { ...process.env, NIXCACHE_REPO: repo, NIXCACHE_UPSTREAM: '' };
+const proxyEnv = { ...process.env, NIXCACHE_REPO: repo };
 const proxy = spawn('sh', ['-c', 'uv run nixcache-proxy > /tmp/nixcache-proxy.log 2>&1'], {
   cwd: actionPath,
   detached: true,
