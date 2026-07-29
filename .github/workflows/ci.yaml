@@ -72,7 +72,7 @@ jobs:
   runtime-test:
     name: Runtime test
     runs-on: ubuntu-26.04
-    if: github.event_name != 'push'
+    if: github.event_name == 'merge_group'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
