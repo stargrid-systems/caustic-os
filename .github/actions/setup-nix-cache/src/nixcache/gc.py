@@ -1,15 +1,11 @@
-#!/usr/bin/env python3
-"""Prune stale entries from the OCI cache index."""
-
 import argparse
-import os
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import nixcache
-from nixcache import OCIClient, fetch_index, info, push_index
+from nixcache.config import info
+from nixcache.index import push_index
+from nixcache.oci import OCIClient
 
 
 def main():
@@ -24,6 +20,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
+    from nixcache.index import fetch_index
+
     client = OCIClient(push=True)
 
     existing, _ = fetch_index(client)
@@ -34,9 +32,9 @@ def main():
     with open(args.live_file) as f:
         live = set(f.read().strip().split("\n"))
 
-    cutoff = (
-        datetime.now(timezone.utc) - timedelta(days=args.retention_days)
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (datetime.now(UTC) - timedelta(days=args.retention_days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     info(f"Retention: {args.retention_days} days (cutoff: {cutoff})")
     info(f"Dry run: {args.dry_run}")
 

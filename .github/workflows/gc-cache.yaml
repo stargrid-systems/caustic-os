@@ -38,13 +38,10 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          save: false
 
       - name: Compute live closure
         run: |
-          # Both release artifacts share the same aarch64-linux closure
-          # for most paths, so building just devImage is enough to mark
-          # the live set. Production-only paths (signed UKI) get evicted
-          # by retention and rebuilt cheaply on the next release.
           nix build --no-link \
             .#nixosConfigurations.devImage.config.system.build.updatePackage
           nix path-info --recursive \
@@ -62,7 +59,7 @@ jobs:
           if [[ "${{ github.event_name == 'schedule' || inputs.dry_run }}" == "true" ]]; then
             args+=(--dry-run)
           fi
-          python3 .github/actions/setup-nix-cache/lib/gc.py \
+          uv run --project .github/actions/setup-nix-cache nixcache-gc \
             "${RUNNER_TEMP}/live-hashes.txt" \
             --retention-days "${{ inputs.retention_days || '30' }}" \
             "${args[@]}"

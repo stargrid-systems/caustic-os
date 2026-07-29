@@ -24,6 +24,7 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          save: false
 
       - name: nix flake check
         run: nix flake check --print-build-logs
@@ -65,6 +66,7 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          save: false
 
       - name: Evaluate flake for aarch64-linux
         run: nix flake show --system aarch64-linux --print-build-logs
@@ -97,7 +99,3 @@ jobs:
 
       - name: Run runtime test
         run: nix build .#tests.x86_64-linux.runtime -L --print-build-logs
-
-      - name: Save cache
-        if: always()
-        uses: ./.github/actions/setup-nix-cache/save

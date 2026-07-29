@@ -2,7 +2,7 @@
 
 Nix binary cache backed by GHCR (OCI registry). Originally forked from
 [cmspam/nixcache-oci](https://github.com/cmspam/nixcache-oci), now a
-first-party component with significant divergence.
+first-party component.
 
 ## How it works
 
@@ -10,29 +10,34 @@ NARs are stored as content-addressed OCI blobs under
 `ghcr.io/<repo>/nix-cache`. A single `cache-index` tag holds a JSON
 manifest mapping every store hash to its narinfo text and NAR blob digest.
 
-- **Proxy** (`proxy/main.py`): local HTTP server that bridges the Nix
-  binary cache protocol to GHCR. Serves narinfo from an in-memory index
-  (zero network latency), streams NAR blobs directly from GHCR.
-- **Uploader** (`lib/upload.py`): exports locally-built store paths,
-  pushes NARs as OCI blobs, merges entries into the index.
-- **GC** (`lib/gc.py`): prunes index entries older than the retention
-  period that are not in the current live closure.
-- **Shared library** (`lib/nixcache.py`): OCI registry client, index
-  model, and NAR export logic used by all three.
+The action installs Determinate Nix, starts a local proxy as a substituter,
+and automatically uploads locally-built paths at the end of the job via a
+post hook. No manual save step is needed.
 
-Stdlib only (Python 3, no pip dependencies). Also requires `curl`, `jq`,
-`xz`, and the Nix CLI tools.
+## Files
 
-## Actions
+- `main.js` - setup: installs uv, starts proxy, installs Determinate Nix
+- `post.js` - save: uploads locally-built paths (runs automatically)
+- `src/nixcache/` - Python package:
+  - `proxy.py` - HTTP proxy bridging Nix binary cache protocol to GHCR
+  - `upload.py` - exports and uploads store paths
+  - `gc.py` - prunes stale index entries
+  - `oci.py` - OCI registry client (token, blob, manifest operations)
+  - `index.py` - cache-index model with optimistic concurrency
+  - `nar.py` - NAR export, narinfo generation, self-check
+  - `config.py` - env-based configuration and utilities
 
-- `setup-nix-cache` - starts the proxy and configures Nix to use it as
-  a substituter.
-- `setup-nix-cache/save` - uploads locally-built paths after a build.
+## Inputs
+
+| Name | Default | Description |
+|---|---|---|
+| `public-key` | (required) | Public key for validating signed NARs |
+| `out-link` | `result` | Nix output symlink to record as a GC root |
+| `save` | `true` | Upload locally-built paths at end of job |
 
 ## Required environment
 
-| Variable | Used by | Description |
-|---|---|---|
-| `NIXCACHE_REPO` | all | GitHub `owner/repo` for the OCI cache |
-| `GITHUB_TOKEN` | all | GitHub token for GHCR auth |
-| `NIXCACHE_SIGNING_KEY_FILE` | uploader | Path to nix cache signing key (optional) |
+| Variable | Description |
+|---|---|
+| `NIX_CACHE_PRIVATE_KEY` | Nix cache signing key (secret) |
+| `GITHUB_TOKEN` | GitHub token for GHCR auth |

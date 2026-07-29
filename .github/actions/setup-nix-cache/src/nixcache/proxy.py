@@ -1,11 +1,4 @@
-#!/usr/bin/env python3
-"""
-nixcache-proxy — Local HTTP proxy bridging Nix binary cache protocol to GHCR.
-
-Serves narinfo responses from a locally-cached index (zero network latency).
-Streams NAR blobs directly from GHCR or upstream caches to Nix.
-"""
-
+import contextlib
 import http.server
 import json
 import os
@@ -15,15 +8,13 @@ import threading
 import time
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-import nixcache
-from nixcache import OCIClient, fetch_index, fetch_url, open_stream
+from nixcache.config import REPO, STREAM_CHUNK_SIZE, UPSTREAM_CACHES
+from nixcache.index import fetch_index
+from nixcache.oci import OCIClient, fetch_url, open_stream
 
 PORT = int(os.environ.get("NIXCACHE_PORT", "37515"))
 LISTEN_ADDR = os.environ.get("NIXCACHE_LISTEN", "127.0.0.1")
 INDEX_TTL = int(os.environ.get("NIXCACHE_INDEX_TTL", "300"))
-UPSTREAM_CACHES = nixcache.UPSTREAM_CACHES
-STREAM_CHUNK_SIZE = nixcache.STREAM_CHUNK_SIZE
 
 
 def _default_index_dir():
@@ -33,15 +24,13 @@ def _default_index_dir():
     cache_dir = os.environ.get("CACHE_DIRECTORY")
     if cache_dir:
         return Path(cache_dir)
-    return Path.home() / ".cache" / "nixcache-proxy" / nixcache.REPO.replace("/", "--")
+    return Path.home() / ".cache" / "nixcache-proxy" / REPO.replace("/", "--")
 
 
 INDEX_DIR = _default_index_dir()
 
 client = OCIClient(push=False)
 
-
-# ── Index ─────────────────────────────────────────────────────────────
 
 class CacheIndex:
     def __init__(self):
@@ -71,8 +60,7 @@ class CacheIndex:
             self._index_file.parent.mkdir(parents=True, exist_ok=True)
             self._index_file.write_bytes(json.dumps(index).encode())
             print(
-                f"[nixcache-proxy] Index refreshed: "
-                f"{len(index.get('entries', {}))} entries",
+                f"[nixcache-proxy] Index refreshed: {len(index.get('entries', {}))} entries",
                 file=sys.stderr,
             )
         elif digest:
@@ -82,10 +70,8 @@ class CacheIndex:
             )
 
         if not self._index and self._index_file.exists():
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 self._index = json.loads(self._index_file.read_bytes())
-            except json.JSONDecodeError:
-                pass
 
         self._nar_map = {}
         if self._index:
@@ -111,8 +97,6 @@ class CacheIndex:
 
 cache_index = CacheIndex()
 
-
-# ── HTTP handler ──────────────────────────────────────────────────────
 
 def get_nci_response():
     lines = [
@@ -204,7 +188,7 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
             "index_entries": len(index.get("entries", {})),
             "index_generated": index.get("generated", "unknown"),
             "index_ttl": INDEX_TTL,
-            "repo": nixcache.REPO,
+            "repo": REPO,
             "upstream": UPSTREAM_CACHES,
         }
         body = json.dumps(status, indent=2).encode() + b"\n"
@@ -255,7 +239,7 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
 
 def main():
     print(f"nixcache-proxy starting on http://{LISTEN_ADDR}:{PORT}", file=sys.stderr)
-    print(f"  Repo: {nixcache.REPO}", file=sys.stderr)
+    print(f"  Repo: {REPO}", file=sys.stderr)
     print(f"  Upstream: {', '.join(UPSTREAM_CACHES)}", file=sys.stderr)
     print(f"  Index TTL: {INDEX_TTL}s", file=sys.stderr)
 

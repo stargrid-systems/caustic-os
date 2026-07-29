@@ -161,6 +161,7 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          out-link: update
 
       - name: Build dev update package
         run: |
@@ -169,12 +170,6 @@ jobs:
             .#nixosConfigurations.devImage.config.system.build.updatePackage \
             --out-link update \
             --print-build-logs
-
-      - name: Save cache
-        if: always()
-        uses: ./.github/actions/setup-nix-cache/save
-        with:
-          out-link: update
 
       - name: Compose OCI artifact
         run: |
@@ -240,10 +235,6 @@ jobs:
       - name: Run runtime test
         run: nix build .#tests.aarch64-linux.runtime -L --print-build-logs
 
-      - name: Save cache
-        if: always()
-        uses: ./.github/actions/setup-nix-cache/save
-
   build-prod:
     name: Build prod image
     needs: [tag, runtime-test]
@@ -276,6 +267,7 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          out-link: update
 
       - name: Build production update package
         env:
@@ -285,12 +277,6 @@ jobs:
             .#nixosConfigurations.production.config.system.build.updatePackage \
             --out-link update \
             --print-build-logs
-
-      - name: Save cache
-        if: always()
-        uses: ./.github/actions/setup-nix-cache/save
-        with:
-          out-link: update
 
       - name: Compose OCI artifact
         run: |

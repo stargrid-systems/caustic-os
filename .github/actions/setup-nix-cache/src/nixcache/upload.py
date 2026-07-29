@@ -1,25 +1,14 @@
-#!/usr/bin/env python3
-"""Upload locally-built Nix store paths to the OCI cache on GHCR."""
-
 import argparse
 import os
+import random
 import subprocess
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import nixcache
-from nixcache import (
-    OCIClient,
-    export_path,
-    find_locally_built_paths,
-    info,
-    err,
-    nar_self_check,
-    sign_paths,
-    store_hash,
-    update_index,
-)
+from nixcache.config import err, fmt_size, info, store_hash, utc_now
+from nixcache.index import update_index
+from nixcache.nar import export_path, find_locally_built_paths, nar_self_check, sign_paths
+from nixcache.oci import OCIClient
 
 
 def main():
@@ -54,7 +43,7 @@ def main():
     for store_path in upload_list:
         try:
             result = export_path(store_path, cache_dir)
-            info(f"  Exported {result['hash']} ({nixcache.fmt_size(result['nar_size'])})")
+            info(f"  Exported {result['hash']} ({fmt_size(result['nar_size'])})")
             receipts.append(result)
         except Exception as e:
             err(f"Failed to export {store_path}: {e}")
@@ -63,7 +52,6 @@ def main():
         info("No paths exported successfully")
         return 0
 
-    import random
     sample = random.choice(receipts)
     try:
         nar_self_check(sample)
@@ -76,11 +64,11 @@ def main():
         with open(signing_key + ".pub") as f:
             public_key = f.read().strip()
 
-    info(f"Uploading to GHCR: {nixcache.IMAGE}")
+    info("Uploading to GHCR")
     uploaded = 0
     failures = 0
     for r in receipts:
-        info(f"  Uploading NAR for {r['hash']} ({nixcache.fmt_size(r['nar_size'])})")
+        info(f"  Uploading NAR for {r['hash']} ({fmt_size(r['nar_size'])})")
         try:
             r["nar_digest"] = client.push_blob(r["nar_file"])
             uploaded += 1
@@ -93,14 +81,19 @@ def main():
         return 0
 
     if failures:
-        err(f"{failures} upload(s) failed. Updating index with {uploaded} successful upload(s) only.")
+        err(
+            f"{failures} upload(s) failed."
+            f" Updating index with {uploaded} successful upload(s) only."
+        )
         receipts = [r for r in receipts if "nar_digest" in r]
 
     gc_roots = []
     try:
         result = subprocess.run(
             ["nix", "path-info", args.out_link],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         top_level = result.stdout.strip()
         if top_level:
@@ -115,18 +108,15 @@ def main():
         store_path = ""
         for line in r["narinfo_text"].splitlines():
             if line.startswith("StorePath: "):
-                store_path = line[len("StorePath: "):].strip()
+                store_path = line[len("StorePath: ") :].strip()
                 break
-        name = (
-            os.path.basename(store_path).split("-", 1)[-1]
-            if store_path else r["hash"]
-        )
+        name = os.path.basename(store_path).split("-", 1)[-1] if store_path else r["hash"]
         new_entries[r["hash"]] = {
             "name": name,
             "narinfo": r["narinfo_text"],
             "nar_digest": r["nar_digest"],
             "nar_size": r["nar_size"],
-            "added": nixcache.utc_now(),
+            "added": utc_now(),
         }
 
     index = update_index(client, new_entries, gc_roots, public_key, work_dir)

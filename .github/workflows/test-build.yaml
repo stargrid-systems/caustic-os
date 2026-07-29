@@ -70,7 +70,3 @@ jobs:
             ${{ inputs.target }} \
             --out-link result \
             --print-build-logs
-
-      - name: Save cache
-        if: always()
-        uses: ./.github/actions/setup-nix-cache/save
