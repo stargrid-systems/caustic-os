@@ -7,8 +7,8 @@
 }:
 let
   rpi4Uefi = pkgs.fetchzip {
-    url = "https://github.com/pftf/RPi4/releases/download/v1.52/RPi4_UEFI_Firmware_v1.52.zip";
-    hash = "sha256-nL/fKtVzxpaIjiy0nCG/K94/nN5jG2Bzae3d3tUoIMo=";
+    url = "https://github.com/pftf/RPi4/releases/download/v1.51/RPi4_UEFI_Firmware_v1.51.zip";
+    hash = "sha256-zMJR5VKnHwt5KYoE6lW09HIF31rmuxx6XagNUMQR2+0=";
     stripRoot = false;
   };
 
