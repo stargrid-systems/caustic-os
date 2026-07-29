@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Simon Berger
 # SPDX-License-Identifier: AGPL-3.0-only
-"""NAR export via nix copy and narinfo parsing."""
+"""NAR dump, narinfo generation, and local-path discovery."""
 
 import hashlib
 import json
@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from nixcache.config import info, store_hash
+from nixcache.config import info, sha256_file, store_hash
 from nixcache.index import fetch_index
 from nixcache.oci import OCIClient
 
@@ -28,52 +28,116 @@ def sign_paths(paths: list[str], key_file: str) -> None:
     )
 
 
-def export_to_binary_cache(
+def _query_path_info(paths: list[str]) -> dict[str, dict[str, Any]]:
+    """Return a store-path keyed dict of verbose path-info metadata."""
+    result = subprocess.run(
+        ["nix", "path-info", "--json", "-v", *paths],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    raw = json.loads(result.stdout)
+    if isinstance(raw, list):
+        return {item["path"]: item for item in raw}
+    return {k: {"path": k, **v} for k, v in raw.items()}
+
+
+def _dump_nar(store_path: str, dest: Path) -> str:
+    """Dump a single store path to a compressed NAR file.
+
+    Returns the sha256 hash of the compressed file.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with dest.open("wb") as f:
+        dump = subprocess.Popen(
+            ["nix-store", "--dump", store_path],
+            stdout=subprocess.PIPE,
+        )
+        xz = subprocess.Popen(
+            ["xz", "-6", "-e"],
+            stdin=dump.stdout,
+            stdout=f,
+        )
+        if dump.stdout is not None:
+            dump.stdout.close()
+        xz.wait()
+        dump.wait()
+    if xz.returncode != 0:
+        msg = f"xz failed (exit {xz.returncode}) for {store_path}"
+        raise RuntimeError(msg)
+    if dump.returncode != 0:
+        msg = f"nix-store --dump failed (exit {dump.returncode}) for {store_path}"
+        raise RuntimeError(msg)
+    return "sha256:" + sha256_file(dest)
+
+
+def _build_narinfo(
+    meta: dict[str, Any],
+    nar_url: str,
+    file_hash: str,
+    file_size: int,
+) -> str:
+    """Build a .narinfo text block from verbose path-info metadata."""
+    refs = " ".join(Path(r).name for r in meta.get("references", []))
+    lines = [
+        f"StorePath: {meta['path']}",
+        f"URL: {nar_url}",
+        "Compression: xz",
+        f"FileHash: {file_hash}",
+        f"FileSize: {file_size}",
+        f"NarHash: {meta['narHash']}",
+        f"NarSize: {meta['narSize']}",
+    ]
+    if refs:
+        lines.append(f"References: {refs}")
+    if meta.get("deriver"):
+        lines.append(f"Deriver: {meta['deriver']}")
+    lines.extend(f"Sig: {sig}" for sig in meta.get("signatures", []))
+    if meta.get("system"):
+        lines.append(f"System: {meta['system']}")
+    return "\n".join(lines) + "\n"
+
+
+def dump_nars(
     paths: list[str],
     cache_dir: Path,
     signing_key: str,
-) -> None:
-    """Export store paths to a local binary cache via nix copy."""
+) -> list[dict[str, Any]]:
+    """Sign, dump, and build narinfo for each path individually.
+
+    Unlike nix copy --to, this only processes the given paths
+    and does NOT export their dependency closure.
+    """
     sign_paths(paths, signing_key)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    info(f"Exporting {len(paths)} paths via nix copy")
-    subprocess.run(
-        ["nix", "copy", "--to", f"file://{cache_dir}", *paths],
-        check=True,
-    )
+    info_map = _query_path_info(paths)
+    info(f"Dumping {len(paths)} NARs individually")
 
-
-def parse_narinfo(narinfo_path: Path) -> dict[str, Any]:
-    """Parse a .narinfo file into a metadata dict."""
-    text = narinfo_path.read_text()
-    fields: dict[str, Any] = {"text": text, "hash": narinfo_path.stem}
-    for line in text.splitlines():
-        if ": " not in line:
-            continue
-        key, value = line.split(": ", 1)
-        lk = key.lower()
-        if lk == "references":
-            fields["references"] = value.split()
-        elif lk == "sig":
-            fields.setdefault("sigs", []).append(value)
-        else:
-            fields[lk] = value
-    return fields
-
-
-def scan_binary_cache(cache_dir: Path, wanted: set[str]) -> list[dict[str, Any]]:
-    """Scan a binary cache for narinfo + NAR pairs matching wanted hashes."""
     entries: list[dict[str, Any]] = []
-    for narinfo_path in sorted(cache_dir.glob("*.narinfo")):
-        if narinfo_path.stem not in wanted:
+    for store_path in paths:
+        meta = info_map.get(store_path)
+        if meta is None:
             continue
-        entry = parse_narinfo(narinfo_path)
-        nar_path = cache_dir / entry.get("url", "")
-        if not nar_path.exists():
-            continue
-        entry["nar_file"] = str(nar_path)
-        entry["nar_size"] = nar_path.stat().st_size
-        entries.append(entry)
+        h = store_hash(store_path)
+        nar_url = f"{h}.nar.xz"
+        nar_file = cache_dir / nar_url
+
+        file_hash = _dump_nar(store_path, nar_file)
+        file_size = nar_file.stat().st_size
+        narinfo_text = _build_narinfo(meta, nar_url, file_hash, file_size)
+
+        entries.append(
+            {
+                "hash": h,
+                "text": narinfo_text,
+                "nar_file": str(nar_file),
+                "nar_size": file_size,
+                "storepath": store_path,
+                "url": nar_url,
+            }
+        )
+
+    info(f"Dumped {len(entries)} NARs")
     return entries
 
 
@@ -129,7 +193,7 @@ def find_locally_built_paths(client: OCIClient) -> list[str]:
         info(f"Store baseline: {len(baseline)} paths (will skip these)")
 
     result = subprocess.run(
-        ["nix", "path-info", "--all", "--json"],
+        ["nix", "path-info", "--all", "--json", "-v"],
         capture_output=True,
         text=True,
         check=True,
@@ -141,6 +205,8 @@ def find_locally_built_paths(client: OCIClient) -> list[str]:
     else:
         items = [{"path": k, **v} for k, v in all_paths.items()]
 
+    unsigned = 0
+    signed = 0
     paths = []
     for item in items:
         path = item.get("path", "")
@@ -148,10 +214,13 @@ def find_locally_built_paths(client: OCIClient) -> list[str]:
             continue
         sigs = item.get("signatures", item.get("sigs", []))
         if sigs:
+            signed += 1
             continue
+        unsigned += 1
         h = store_hash(path)
         if h in own_hashes:
             continue
         paths.append(path)
 
+    info(f"Store scan: {signed} signed (cached), {unsigned} unsigned")
     return sorted(set(paths))

@@ -14,10 +14,9 @@ from typing import Any
 from nixcache.config import err, fmt_size, info, store_hash, utc_now
 from nixcache.index import update_index
 from nixcache.nar import (
-    export_to_binary_cache,
+    dump_nars,
     find_locally_built_paths,
     nar_self_check,
-    scan_binary_cache,
 )
 from nixcache.oci import OCIClient
 
@@ -116,14 +115,12 @@ def main() -> int:
     work_dir = tempfile.mkdtemp(prefix="nixcache-")
     cache_dir = Path(work_dir) / "cache"
 
-    wanted = {store_hash(p) for p in upload_list}
-    export_to_binary_cache(upload_list, cache_dir, signing_key)
-    entries = scan_binary_cache(cache_dir, wanted)
+    entries = dump_nars(upload_list, cache_dir, signing_key)
     if not entries:
-        info("No paths exported successfully")
+        info("No paths dumped successfully")
         return 0
 
-    info(f"Exported {len(entries)} paths")
+    info(f"Dumped {len(entries)} paths")
 
     sample = random.choice(entries)
     try:
