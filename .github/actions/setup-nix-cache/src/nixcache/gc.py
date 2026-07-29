@@ -16,6 +16,12 @@ from nixcache.oci import OCIClient
 _FAR_FUTURE = "2099-01-01T00:00:00Z"
 
 
+def _is_unsigned(entry: dict[str, Any]) -> bool:
+    """Return True if the entry's narinfo has no Sig: line."""
+    narinfo = entry.get("narinfo", "")
+    return not any(line.strip().startswith("Sig:") for line in narinfo.splitlines())
+
+
 def main() -> int:
     """Entry point for nixcache-gc."""
     parser = argparse.ArgumentParser(
@@ -27,6 +33,11 @@ def main() -> int:
     )
     parser.add_argument("--retention-days", type=int, default=30)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--purge-unsigned",
+        action="store_true",
+        help="Remove entries whose narinfo has no Sig: line",
+    )
     args = parser.parse_args()
 
     client = OCIClient(push=True)
@@ -43,10 +54,15 @@ def main() -> int:
     )
     info(f"Retention: {args.retention_days} days (cutoff: {cutoff})")
     info(f"Dry run: {args.dry_run}")
+    info(f"Purge unsigned: {args.purge_unsigned}")
 
     keep: dict[str, Any] = {}
     delete: list[tuple[str, dict[str, Any]]] = []
     for h, entry in existing.get("entries", {}).items():
+        if args.purge_unsigned and _is_unsigned(entry):
+            delete.append((h, entry))
+            info(f"DELETE (unsigned): {h} ({entry.get('name', '?')})")
+            continue
         added = entry.get("added", _FAR_FUTURE)
         if h in live or added >= cutoff:
             keep[h] = entry

@@ -28,7 +28,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: nix flake check
-        run: nix flake check --print-build-logs
+        run: nix flake check
 
   rust:
     name: Rust
@@ -71,7 +71,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Evaluate flake for aarch64-linux
-        run: nix flake show --system aarch64-linux --print-build-logs
+        run: nix flake show --system aarch64-linux
 
   runtime-test:
     name: Runtime test
@@ -102,4 +102,4 @@ jobs:
           sudo systemctl restart nix-daemon
 
       - name: Run runtime test
-        run: nix build .#tests.x86_64-linux.runtime -L --print-build-logs
+        run: nix build .#tests.x86_64-linux.runtime -L

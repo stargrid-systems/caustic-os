@@ -70,5 +70,4 @@ jobs:
             --keep-going \
             "${extra[@]}" \
             ${{ inputs.target }} \
-            --out-link result \
-            --print-build-logs
+            --out-link result
