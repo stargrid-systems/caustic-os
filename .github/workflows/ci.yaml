@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  packages: read
+  packages: write
 
 jobs:
   quick-checks:
@@ -97,3 +97,7 @@ jobs:
 
       - name: Run runtime test
         run: nix build .#tests.x86_64-linux.runtime -L --print-build-logs
+
+      - name: Save cache
+        if: always()
+        uses: ./.github/actions/setup-nix-cache/save
