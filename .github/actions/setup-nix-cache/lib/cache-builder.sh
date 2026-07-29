@@ -163,82 +163,6 @@ oci_get_blob() {
         "https://${NIXCACHE_REGISTRY}/v2/${NIXCACHE_REPO}/nix-cache/blobs/${digest}" 2>/dev/null
 }
 
-# ── Nix helpers ───────────────────────────────────────────────────────
-
-discover_outputs() {
-    local flake_dir="$1"
-    local system
-    system=$(nix eval --raw --impure --expr 'builtins.currentSystem')
-    info "Discovering flake outputs for $system in $flake_dir"
-
-    local flake_ref="path:$(realpath "$flake_dir")"
-
-    if [[ ! -f "$flake_dir/flake.lock" ]]; then
-        info "Generating flake.lock for $flake_dir"
-        nix flake update --flake "$flake_ref" 1>&2
-    fi
-
-    local refs=()
-
-    local pkg_names
-    pkg_names=$(nix eval "$flake_ref#packages.${system}" --apply 'attrs: builtins.concatStringsSep "\n" (builtins.attrNames attrs)' --raw 2>/dev/null) || true
-    if [[ -n "$pkg_names" ]]; then
-        while IFS= read -r name; do
-            [[ -n "$name" ]] && refs+=("${flake_ref}#packages.${system}.${name}")
-        done <<< "$pkg_names"
-    fi
-
-    local nixos_names
-    nixos_names=$(nix eval "$flake_ref#nixosConfigurations" --apply 'attrs: builtins.concatStringsSep "\n" (builtins.attrNames attrs)' --raw 2>/dev/null) || true
-    if [[ -n "$nixos_names" ]]; then
-        while IFS= read -r name; do
-            [[ -n "$name" ]] && refs+=("${flake_ref}#nixosConfigurations.${name}.config.system.build.toplevel")
-        done <<< "$nixos_names"
-    fi
-
-    local shell_names
-    shell_names=$(nix eval "$flake_ref#devShells.${system}" --apply 'attrs: builtins.concatStringsSep "\n" (builtins.attrNames attrs)' --raw 2>/dev/null) || true
-    if [[ -n "$shell_names" ]]; then
-        while IFS= read -r name; do
-            [[ -n "$name" ]] && refs+=("${flake_ref}#devShells.${system}.${name}")
-        done <<< "$shell_names"
-    fi
-
-    if [[ ${#refs[@]} -eq 0 ]]; then
-        err "No buildable outputs found for $system in $flake_dir"
-        return 1
-    fi
-
-    printf '%s\n' "${refs[@]}"
-}
-
-build_outputs() {
-    local refs=("$@")
-    local all_paths=()
-    for ref in "${refs[@]}"; do
-        info "Building $ref"
-        local json_file
-        json_file=$(mktemp)
-        nix build "$ref" --no-link --accept-flake-config --json > "$json_file" 2>&2 || {
-            err "Failed to build $ref"
-            rm -f "$json_file"
-            return 1
-        }
-        local paths
-        paths=$(grep -o '\[.*\]' "$json_file" | jq -r '.[].outputs | to_entries[].value' 2>/dev/null) || {
-            err "JSON parse failed, falling back to nix path-info"
-            paths=$(nix path-info "$ref" 2>/dev/null)
-        }
-        rm -f "$json_file"
-        all_paths+=($paths)
-    done
-    printf '%s\n' "${all_paths[@]}"
-}
-
-get_closure() {
-    nix-store --query --requisites "$@" | sort -u
-}
-
 # export_paths_directly <store_paths...> — export only the given paths as NARs
 # This is MUCH faster than `nix copy --to file://` which exports the entire
 # closure (potentially thousands of paths). We dump each path individually,
@@ -550,93 +474,8 @@ PYEOF
     info "Cache index pushed to GHCR"
 }
 
-# ── Main pipeline ─────────────────────────────────────────────────────
-
-# start_self_substituter — start the proxy on the CI runner so that Nix can
-# pull previously-cached paths from our own GHCR cache instead of rebuilding.
-# This avoids recompiling packages that haven't changed between runs.
-start_self_substituter() {
-    info "Starting self-substituter to reuse previously cached builds"
-
-    # The proxy script is at proxy/main.py relative to the repo root
-    local proxy_script
-    proxy_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/proxy/main.py"
-    if [[ ! -f "$proxy_script" ]]; then
-        info "Proxy script not found at $proxy_script, skipping self-substitution"
-        return 0
-    fi
-
-    # NIXCACHE_UPSTREAM="" — skip proxy's internal upstream fallback. Nix
-    # already queries cache.nixos.org and the flake's other substituters
-    # directly in parallel, so the proxy blocking on an upstream HTTP call
-    # per miss just serializes what Nix would otherwise do concurrently.
-    NIXCACHE_REPO="$NIXCACHE_REPO" \
-    NIXCACHE_PORT=37515 \
-    NIXCACHE_LISTEN=127.0.0.1 \
-    NIXCACHE_UPSTREAM="" \
-    GITHUB_TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}" \
-        python3 "$proxy_script" &
-    SELF_PROXY_PID=$!
-
-    # Wait for it to be ready
-    local ready=false
-    for i in $(seq 1 15); do
-        if curl -fs --max-time 2 http://127.0.0.1:37515/nix-cache-info >/dev/null 2>&1; then
-            ready=true
-            break
-        fi
-        sleep 1
-    done
-
-    if [[ "$ready" == "true" ]]; then
-        info "Self-substituter running (pid=$SELF_PROXY_PID)"
-        # Configure Nix to use our own cache during builds
-        # Try system config first, fall back to user config
-        local nix_conf="/etc/nix/nix.conf"
-        if [[ ! -w "$nix_conf" ]] && [[ ! -w "$(dirname "$nix_conf")" ]]; then
-            nix_conf="${HOME}/.config/nix/nix.conf"
-            mkdir -p "$(dirname "$nix_conf")"
-        fi
-        cat >> "$nix_conf" <<EOF
-extra-substituters = http://127.0.0.1:37515
-extra-trusted-substituters = http://127.0.0.1:37515
-EOF
-        info "Added self-substituter to $nix_conf"
-
-        # Trust our own signing key so Nix will accept signed NARs served
-        # by the proxy. Without this, require-sigs rejects them and we'd
-        # rebuild everything on every run instead of substituting.
-        if [[ -n "${NIXCACHE_SIGNING_KEY_FILE:-}" ]] && [[ -f "$NIXCACHE_SIGNING_KEY_FILE" ]]; then
-            local pub_key
-            pub_key=$(nix key convert-secret-to-public < "$NIXCACHE_SIGNING_KEY_FILE" 2>/dev/null || true)
-            if [[ -n "$pub_key" ]]; then
-                echo "extra-trusted-public-keys = $pub_key" >> "$nix_conf"
-                info "Trusted own public key: $pub_key"
-            fi
-        fi
-    else
-        info "Self-substituter failed to start, continuing without it"
-        kill "$SELF_PROXY_PID" 2>/dev/null || true
-        SELF_PROXY_PID=""
-    fi
-}
-
 # Return locally-built paths (no signatures) not already in the GHCR index.
-# Use --all to scan the entire store instead of a specific closure.
 find_locally_built_paths() {
-    local query_all=false
-    if [[ "${1:-}" == "--all" ]]; then
-        query_all=true
-        shift
-    fi
-    local paths=("$@")
-
-    if [[ "$query_all" == "false" ]]; then
-        if [[ ${#paths[@]} -eq 0 ]] || [[ -z "${paths[0]}" ]]; then
-            err "find_locally_built_paths: no paths provided"
-            return 1
-        fi
-    fi
 
     # Pull our GHCR index so we can skip already-uploaded paths.
     local own_hashes=""
@@ -665,25 +504,15 @@ find_locally_built_paths() {
         done <<< "$own_hashes"
     fi
 
-    # Walk the closure or entire store. jq normalizes list vs object output.
+    # Scan all paths in the store. jq normalizes list vs object output.
     local unsigned
-    if [[ "$query_all" == "true" ]]; then
-        unsigned=$(nix path-info --all --json 2>/dev/null | \
-            jq -r '
-                (if type == "array" then .
-                 else (to_entries | map({path: .key} + .value))
-                 end) |
-                .[] | select((.signatures // []) | length == 0) | .path
-            ')
-    else
-        unsigned=$(nix path-info --json --recursive "${paths[@]}" 2>/dev/null | \
-            jq -r '
-                (if type == "array" then .
-                 else (to_entries | map({path: .key} + .value))
-                 end) |
-                .[] | select((.signatures // []) | length == 0) | .path
-            ')
-    fi
+    unsigned=$(nix path-info --all --json 2>/dev/null | \
+        jq -r '
+            (if type == "array" then .
+             else (to_entries | map({path: .key} + .value))
+             end) |
+            .[] | select((.signatures // []) | length == 0) | .path
+        ')
 
     local result=()
     while IFS= read -r path; do
@@ -696,90 +525,5 @@ find_locally_built_paths() {
 
     if [[ ${#result[@]} -gt 0 ]]; then
         printf '%s\n' "${result[@]}" | sort -u
-    fi
-}
-
-stop_self_substituter() {
-    if [[ -n "${SELF_PROXY_PID:-}" ]]; then
-        kill "$SELF_PROXY_PID" 2>/dev/null || true
-        info "Self-substituter stopped"
-    fi
-}
-
-full_pipeline() {
-    local flake_dir="${NIXCACHE_CONFIG_DIR}"
-
-    info "Starting OCI cache pipeline"
-    info "Config: $flake_dir | Image: $NIXCACHE_IMAGE"
-
-    # 0. Start our proxy as a substituter. Gives Nix access to paths
-    #    cached from previous runs without rebuilding.
-    SELF_PROXY_PID=""
-    start_self_substituter
-
-    # 1. Discover outputs.
-    local discovered
-    discovered=$(discover_outputs "$flake_dir")
-    if [[ -z "$discovered" ]]; then
-        err "No buildable outputs found in $flake_dir"
-        stop_self_substituter
-        return 1
-    fi
-    local refs_array
-    mapfile -t refs_array <<< "$discovered"
-    info "Discovered ${#refs_array[@]} output(s) to build"
-    printf '    %s\n' "${refs_array[@]}" >&2
-
-    # 2. Build all outputs. Nix does narinfo resolution and substitution
-    #    inline, interleaved with compilation — no separate dry-run pass.
-    #    --accept-flake-config so the flake's extra-substituters (jovian,
-    #    cachyos via lantian, etc.) are used in parallel with cache.nixos.org.
-    local output_paths
-    output_paths=$(build_outputs "${refs_array[@]}")
-    local paths_array
-    mapfile -t paths_array <<< "$output_paths"
-    info "Built ${#paths_array[@]} top-level output(s)"
-
-    # Done with the self-substituter — the rest is local + GHCR uploads.
-    stop_self_substituter
-
-    # 3. Signature-based filter: upload only paths built locally (no sig).
-    #    Paths with any signature came from some cache already.
-    info "Inspecting closure signatures to find locally-built paths"
-    local upload_list
-    upload_list=$(find_locally_built_paths "${paths_array[@]}")
-    if [[ -z "$upload_list" ]]; then
-        info "Nothing to upload — every path has an external or existing signature"
-        write_summary "${#refs_array[@]}" 0 0 "${#paths_array[@]}"
-        return 0
-    fi
-    local upload_array
-    mapfile -t upload_array <<< "$upload_list"
-    info "Locally-built paths to upload: ${#upload_array[@]}"
-
-    # 4. Export NARs (this step also signs them with our key).
-    export_paths_directly "${upload_array[@]}"
-
-    # 5. Upload NARs + index manifest to GHCR.
-    upload_to_oci "${paths_array[@]}"
-
-    write_summary "${#refs_array[@]}" "${#upload_array[@]}" "${#upload_array[@]}" "${#paths_array[@]}"
-    info "Pipeline complete!"
-}
-
-# Write a GitHub Actions step summary if available
-write_summary() {
-    local outputs="$1" new_paths="$2" uploaded="$3" total_outputs="$4"
-    if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-        cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-## Cache Build Summary
-
-| Metric | Count |
-|---|---|
-| Flake outputs discovered | $outputs |
-| Output paths built | $total_outputs |
-| New paths cached to GHCR | $new_paths |
-| Paths already cached | skipped |
-EOF
     fi
 }

@@ -71,20 +71,5 @@ jobs:
             --out-link result \
             --print-build-logs
 
-      - name: Upload closure to OCI cache
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NIXCACHE_REPO: ${{ github.repository }}
-        run: |
-          source .github/actions/setup-nix-cache/lib/cache-builder.sh
-          mapfile -t paths < <(nix path-info --recursive ./result)
-          upload_list=$(find_locally_built_paths "${paths[@]}")
-          mapfile -t upload_array <<< "$upload_list"
-          if [[ -z "${upload_array[0]:-}" ]]; then
-            echo "Nothing to upload; entire closure already cached"
-            exit 0
-          fi
-          export_paths_directly "${upload_array[@]}"
-          top_level=$(nix path-info ./result)
-          upload_to_oci "$top_level"
+      - name: Save cache
+        uses: ./.github/actions/setup-nix-cache/save
