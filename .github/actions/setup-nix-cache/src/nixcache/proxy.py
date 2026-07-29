@@ -124,13 +124,13 @@ def get_nci_response() -> bytes:
 
 def upstream_stream_nar(
     path: str,
-) -> tuple[HTTPResponse | None, int]:
+) -> tuple[HTTPResponse | None, int | None]:
     """Try upstream caches for a NAR, returning (response, content_length)."""
     for cache_url in UPSTREAM_CACHES:
         resp, length = open_stream(f"{cache_url}{path}", timeout=60)
         if resp is not None:
             return resp, length
-    return None, 0
+    return None, None
 
 
 class CacheHandler(http.server.BaseHTTPRequestHandler):
@@ -190,7 +190,7 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
         try:
             self.send_response(200)
             self.send_header("Content-Type", content_type)
-            if content_length is not None:
+            if content_length and content_length > 0:
                 self.send_header("Content-Length", str(content_length))
             self.end_headers()
             if getattr(self, "head_only", False):

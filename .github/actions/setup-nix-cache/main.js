@@ -1,5 +1,5 @@
 const { execFileSync, execSync, spawn } = require('child_process');
-const { appendFileSync, writeFileSync } = require('fs');
+const { appendFileSync, writeFileSync, createWriteStream, readFileSync } = require('fs');
 const path = require('path');
 
 const actionPath = __dirname;
@@ -17,7 +17,6 @@ function ghPath(p) {
   if (f) appendFileSync(f, p + '\n');
 }
 
-// 1. Write signing key for the upload step
 if (privateKey) {
   writeFileSync('/tmp/nix-cache.sec', privateKey + '\n', { mode: 0o600 });
   ghEnv('NIXCACHE_SIGNING_KEY_FILE', '/tmp/nix-cache.sec');
@@ -25,11 +24,9 @@ if (privateKey) {
   console.log('::notice::NIX_CACHE_PRIVATE_KEY is not set; cache uploads will be unsigned');
 }
 
-// Persist env vars needed by the post step
 ghEnv('NIXCACHE_REPO', repo);
 if (process.env.GITHUB_TOKEN) ghEnv('GITHUB_TOKEN', process.env.GITHUB_TOKEN);
 
-// 2. Ensure uv is available
 try {
   execSync('uv --version', { stdio: 'pipe' });
 } catch {
@@ -39,11 +36,9 @@ try {
   process.env.PATH = path.join(process.env.HOME || '/root', '.local', 'bin') + ':' + process.env.PATH;
 }
 
-// 3. Sync the project
 console.log('Syncing nixcache-oci project...');
 execSync('uv sync --frozen', { cwd: actionPath, stdio: 'inherit' });
 
-// 4. Start the proxy in the background
 console.log('Starting nixcache-oci proxy...');
 const proxyEnv = { ...process.env, NIXCACHE_REPO: repo, NIXCACHE_UPSTREAM: '' };
 const proxy = spawn('uv', ['run', 'nixcache-proxy'], {
@@ -54,12 +49,10 @@ const proxy = spawn('uv', ['run', 'nixcache-proxy'], {
 });
 proxy.unref();
 
-const { createWriteStream } = require('fs');
 const log = createWriteStream('/tmp/nixcache-proxy.log');
 proxy.stdout.pipe(log);
 proxy.stderr.pipe(log);
 
-// 5. Wait for proxy readiness
 let ready = false;
 for (let i = 0; i < 30; i++) {
   try {
@@ -73,10 +66,9 @@ for (let i = 0; i < 30; i++) {
 
 if (!ready) {
   console.log('::warning::nixcache-oci proxy did not become ready; continuing without it');
-  try { console.log(require('fs').readFileSync('/tmp/nixcache-proxy.log', 'utf8')); } catch {}
+  try { console.log(readFileSync('/tmp/nixcache-proxy.log', 'utf8')); } catch {}
 }
 
-// 6. Install Determinate Nix
 const extraConf = [];
 if (ready) {
   extraConf.push('extra-substituters = http://127.0.0.1:37515');
@@ -93,5 +85,4 @@ for (const c of extraConf) {
 console.log('Installing Determinate Nix...');
 execSync(installCmd, { stdio: 'inherit' });
 
-// 7. Add nix to PATH for subsequent steps
 ghPath('/nix/var/nix/profiles/default/bin');

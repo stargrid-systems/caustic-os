@@ -76,7 +76,7 @@ def open_stream(
     headers: dict[str, str] | None = None,
     timeout: int = 120,
     retries: int = 2,
-) -> tuple[http.client.HTTPResponse | None, int]:
+) -> tuple[http.client.HTTPResponse | None, int | None]:
     """Open a streaming connection to a URL with retries."""
     for attempt in range(retries + 1):
         req = _request(url)
@@ -86,18 +86,18 @@ def open_stream(
         try:
             resp = _urlopen(req, timeout)
             length = resp.headers.get("Content-Length")
-            return resp, int(length) if length else 0
+            return resp, int(length) if length else None
         except urllib.error.HTTPError as e:
             if e.code >= _HTTP_SERVER_ERROR and attempt < retries:
                 time.sleep(1 + attempt)
                 continue
-            return None, 0
+            return None, None
         except (urllib.error.URLError, TimeoutError):
             if attempt < retries:
                 time.sleep(1 + attempt)
                 continue
-            return None, 0
-    return None, 0
+            return None, None
+    return None, None
 
 
 class OCIClient:
@@ -188,7 +188,7 @@ class OCIClient:
         """Fetch a blob by digest."""
         return fetch_url(f"{self.base}/blobs/{digest}", self._auth_headers(), timeout=timeout)
 
-    def stream_blob(self, digest: str) -> tuple[http.client.HTTPResponse | None, int]:
+    def stream_blob(self, digest: str) -> tuple[http.client.HTTPResponse | None, int | None]:
         """Open a streaming connection to a blob."""
         return open_stream(f"{self.base}/blobs/{digest}", self._auth_headers())
 
