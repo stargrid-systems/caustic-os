@@ -26,7 +26,7 @@ def main():
 
     client = OCIClient(push=True)
 
-    existing = fetch_index(client)
+    existing, _ = fetch_index(client)
     if not existing:
         info("No cache index found, nothing to GC")
         return 0

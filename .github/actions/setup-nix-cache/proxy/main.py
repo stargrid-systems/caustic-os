@@ -65,7 +65,7 @@ class CacheIndex:
             return len(entries)
 
     def _refresh(self):
-        index = fetch_index(client)
+        index, _ = fetch_index(client)
         if index:
             self._index = index
             self._index_file.parent.mkdir(parents=True, exist_ok=True)

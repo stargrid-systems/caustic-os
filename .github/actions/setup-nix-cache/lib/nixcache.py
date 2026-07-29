@@ -259,23 +259,30 @@ class OCIClient:
 
 # ── Cache index ───────────────────────────────────────────────────────
 
+class IndexConflict(Exception):
+    """Raised when the cache-index manifest was modified by another writer."""
+
+
 def fetch_index(client):
-    """Fetch and parse the cache-index from the registry. Returns dict or None."""
-    manifest_data, _ = client.get_manifest("cache-index")
+    """Fetch and parse the cache-index. Returns (index_dict, manifest_digest).
+
+    Either value may be None if the index or manifest is missing or corrupt.
+    """
+    manifest_data, digest = client.get_manifest("cache-index")
     if manifest_data is None:
-        return None
+        return None, None
     try:
         manifest = json.loads(manifest_data)
         layers = manifest.get("layers", [])
         if not layers:
-            return None
+            return None, digest
         index_digest = layers[0]["digest"]
         index_data = client.get_blob(index_digest)
         if index_data is None:
-            return None
-        return json.loads(index_data)
+            return None, digest
+        return json.loads(index_data), digest
     except (json.JSONDecodeError, KeyError):
-        return None
+        return None, digest
 
 
 def merge_index(existing, new_entries, gc_roots, public_key=""):
@@ -315,7 +322,11 @@ def build_index_manifest(index_digest, index_size, config_digest, config_size):
 
 
 def push_index(client, index, work_dir, if_match=None):
-    """Push the cache-index (blob + config + manifest) to the registry."""
+    """Push the cache-index (blob + config + manifest) to the registry.
+
+    Returns the digest of the pushed manifest. Raises IndexConflict if the
+    registry reports the manifest was modified by another writer (HTTP 412/409).
+    """
     index_json = json.dumps(index, indent=2, sort_keys=True).encode()
     index_file = os.path.join(work_dir, "cache-index.json")
     with open(index_file, "wb") as f:
@@ -333,19 +344,49 @@ def push_index(client, index, work_dir, if_match=None):
     manifest = build_index_manifest(index_digest, index_size, config_digest, config_size)
     ok, code = client.push_manifest("cache-index", manifest, if_match=if_match)
     if not ok:
+        if code in (409, 412):
+            raise IndexConflict(f"cache-index conflict (HTTP {code})")
         raise RuntimeError(f"Failed to push cache-index manifest (HTTP {code})")
 
+    return "sha256:" + hashlib.sha256(manifest.encode()).hexdigest()
 
-def update_index(client, new_entries, gc_roots, public_key="", work_dir=None):
-    """Fetch existing index, merge, and push. Returns the merged index dict."""
+
+def update_index(client, new_entries, gc_roots, public_key="", work_dir=None, max_retries=3):
+    """Fetch existing index, merge new entries, and push with optimistic concurrency.
+
+    Uses If-Match on the manifest PUT for registries that support it, plus
+    read-after-write verification as a fallback. Retries up to max_retries times
+    on conflict.
+    """
     if work_dir is None:
         import tempfile
         work_dir = tempfile.mkdtemp(prefix="nixcache-")
 
-    existing = fetch_index(client)
-    index = merge_index(existing, new_entries, gc_roots, public_key)
-    push_index(client, index, work_dir)
-    return index
+    merged = None
+    for attempt in range(max_retries):
+        existing, old_digest = fetch_index(client)
+        merged = merge_index(existing, new_entries, gc_roots, public_key)
+
+        try:
+            pushed_digest = push_index(client, merged, work_dir, if_match=old_digest)
+        except IndexConflict:
+            if attempt < max_retries - 1:
+                info(f"Cache index conflict (attempt {attempt + 1}/{max_retries}), retrying...")
+                time.sleep(1 + attempt)
+                continue
+            raise
+
+        _, current_digest = client.get_manifest("cache-index")
+        if current_digest == pushed_digest:
+            return merged
+
+        if attempt < max_retries - 1:
+            info(f"Cache index changed after push (attempt {attempt + 1}/{max_retries}), retrying...")
+            time.sleep(1 + attempt)
+            continue
+
+    err(f"Cache index update failed after {max_retries} attempts")
+    return merged
 
 
 # ── NAR export ────────────────────────────────────────────────────────
@@ -446,7 +487,7 @@ def export_path(store_path, cache_dir):
 
 def find_locally_built_paths(client):
     """Return store paths built locally (unsigned) and not already in the index."""
-    existing = fetch_index(client)
+    existing, _ = fetch_index(client)
     own_hashes = set()
     if existing:
         own_hashes = set(existing.get("entries", {}).keys())
