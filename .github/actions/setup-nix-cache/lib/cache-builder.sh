@@ -621,19 +621,21 @@ EOF
     fi
 }
 
-# find_locally_built_paths — enumerate the full closure of the given output
-# paths and return only those with NO signatures. Paths substituted from
-# any cache (external or our own) carry that cache's signature in their
-# narinfo; locally-built paths have no signature. Skip anything already in
-# our GHCR index (uploaded in a previous run). This replaces the old
-# --dry-run narinfo fan-out: it's pure local sqlite state, thousands of
-# times faster, and it's what cachix-action does.
+# Return locally-built paths (no signatures) not already in the GHCR index.
+# Use --all to scan the entire store instead of a specific closure.
 find_locally_built_paths() {
+    local query_all=false
+    if [[ "${1:-}" == "--all" ]]; then
+        query_all=true
+        shift
+    fi
     local paths=("$@")
 
-    if [[ ${#paths[@]} -eq 0 ]] || [[ -z "${paths[0]}" ]]; then
-        err "find_locally_built_paths: no paths provided"
-        return 1
+    if [[ "$query_all" == "false" ]]; then
+        if [[ ${#paths[@]} -eq 0 ]] || [[ -z "${paths[0]}" ]]; then
+            err "find_locally_built_paths: no paths provided"
+            return 1
+        fi
     fi
 
     # Pull our GHCR index so we can skip already-uploaded paths.
@@ -663,17 +665,25 @@ find_locally_built_paths() {
         done <<< "$own_hashes"
     fi
 
-    # Walk the closure once. `nix path-info --json --recursive` returns
-    # either a list (newer Nix) or a path-keyed object (older Nix); the
-    # jq normalization handles both.
+    # Walk the closure or entire store. jq normalizes list vs object output.
     local unsigned
-    unsigned=$(nix path-info --json --recursive "${paths[@]}" 2>/dev/null | \
-        jq -r '
-            (if type == "array" then .
-             else (to_entries | map({path: .key} + .value))
-             end) |
-            .[] | select((.signatures // []) | length == 0) | .path
-        ')
+    if [[ "$query_all" == "true" ]]; then
+        unsigned=$(nix path-info --all --json 2>/dev/null | \
+            jq -r '
+                (if type == "array" then .
+                 else (to_entries | map({path: .key} + .value))
+                 end) |
+                .[] | select((.signatures // []) | length == 0) | .path
+            ')
+    else
+        unsigned=$(nix path-info --json --recursive "${paths[@]}" 2>/dev/null | \
+            jq -r '
+                (if type == "array" then .
+                 else (to_entries | map({path: .key} + .value))
+                 end) |
+                .[] | select((.signatures // []) | length == 0) | .path
+            ')
+    fi
 
     local result=()
     while IFS= read -r path; do
