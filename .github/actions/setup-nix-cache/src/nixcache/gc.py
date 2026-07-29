@@ -31,7 +31,7 @@ def main() -> int:
 
     client = OCIClient(push=True)
 
-    existing, _ = fetch_index(client)
+    existing, old_digest = fetch_index(client)
     if not existing:
         info("No cache index found, nothing to GC")
         return 0
@@ -63,7 +63,7 @@ def main() -> int:
     existing["gc_roots"] = [h for h in existing.get("gc_roots", []) if h in keep]
 
     work_dir = tempfile.mkdtemp(prefix="nixcache-gc-")
-    push_index(client, existing, work_dir)
+    push_index(client, existing, work_dir, if_match=old_digest)
     info("GC complete, index updated")
     return 0
 

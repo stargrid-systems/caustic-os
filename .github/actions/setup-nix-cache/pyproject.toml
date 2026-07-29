@@ -36,6 +36,3 @@ ignore = [
     "D213",    # conflicts with D212
     "COM812",  # conflicts with ruff format
 ]
-
-[tool.ruff.lint.per-file-ignores]
-"src/nixcache/proxy.py" = ["S104"]

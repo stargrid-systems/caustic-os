@@ -1,8 +1,8 @@
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const actionPath = __dirname;
-const outLink = process.env['INPUT_OUT-LINK'] || process.env['INPUT_OUT_LINK'] || 'result';
-const save = process.env['INPUT_SAVE'] || 'true';
+const outLink = process.env.INPUT_OUT_LINK || 'result';
+const save = process.env.INPUT_SAVE || 'true';
 
 if (save !== 'true') {
   console.log('Skipping cache upload (save=false)');
@@ -10,7 +10,7 @@ if (save !== 'true') {
 }
 
 try {
-  execSync(`uv run nixcache-upload --out-link ${outLink}`, {
+  execFileSync('uv', ['run', 'nixcache-upload', '--out-link', outLink], {
     cwd: actionPath,
     stdio: 'inherit',
   });

@@ -30,7 +30,7 @@ _TOKEN_TTL = 240
 
 
 def _urlopen(req: urllib.request.Request, timeout: int) -> http.client.HTTPResponse:
-    """Open an HTTPS request, rejecting non-HTTPS schemes."""
+    """Open a URL request. URLs are constructed only from trusted constants."""
     return urllib.request.urlopen(req, timeout=timeout)  # noqa: S310
 
 

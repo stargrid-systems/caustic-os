@@ -1,9 +1,9 @@
-const { execSync, spawn } = require('child_process');
+const { execFileSync, execSync, spawn } = require('child_process');
 const { appendFileSync, writeFileSync } = require('fs');
 const path = require('path');
 
 const actionPath = __dirname;
-const publicKey = process.env['INPUT_PUBLIC-KEY'] || '';
+const publicKey = process.env.INPUT_PUBLIC_KEY || '';
 const privateKey = process.env.NIX_CACHE_PRIVATE_KEY || '';
 const repo = process.env.GITHUB_REPOSITORY || '';
 
@@ -41,7 +41,7 @@ try {
 
 // 3. Sync the project
 console.log('Syncing nixcache-oci project...');
-execSync('uv sync', { cwd: actionPath, stdio: 'inherit' });
+execSync('uv sync --frozen', { cwd: actionPath, stdio: 'inherit' });
 
 // 4. Start the proxy in the background
 console.log('Starting nixcache-oci proxy...');
