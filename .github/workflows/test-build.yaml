@@ -72,4 +72,5 @@ jobs:
             --print-build-logs
 
       - name: Save cache
+        if: always()
         uses: ./.github/actions/setup-nix-cache/save

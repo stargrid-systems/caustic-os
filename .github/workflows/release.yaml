@@ -171,6 +171,7 @@ jobs:
             --print-build-logs
 
       - name: Save cache
+        if: always()
         uses: ./.github/actions/setup-nix-cache/save
         with:
           out-link: update
@@ -239,6 +240,10 @@ jobs:
       - name: Run runtime test
         run: nix build .#tests.aarch64-linux.runtime -L --print-build-logs
 
+      - name: Save cache
+        if: always()
+        uses: ./.github/actions/setup-nix-cache/save
+
   build-prod:
     name: Build prod image
     needs: [tag, runtime-test]
@@ -282,6 +287,7 @@ jobs:
             --print-build-logs
 
       - name: Save cache
+        if: always()
         uses: ./.github/actions/setup-nix-cache/save
         with:
           out-link: update
