@@ -17,6 +17,19 @@ from nixcache.oci import OCIClient
 _NAR_CHUNK_SIZE = 65536
 
 
+def sanitize_narinfo(text: str) -> str:
+    """Fix known narinfo issues (bad Deriver field with full path)."""
+    lines = text.split("\n")
+    fixed: list[str] = []
+    for line in lines:
+        if line.startswith("Deriver: /nix/store/"):
+            deriver = line.split(": ", 1)[1]
+            fixed.append(f"Deriver: {Path(deriver).name}")
+        else:
+            fixed.append(line)
+    return "\n".join(fixed)
+
+
 def sign_paths(paths: list[str], key_file: str) -> None:
     """Sign store paths with the given key using nix store sign."""
     if not key_file or not paths:
@@ -90,8 +103,8 @@ def _build_narinfo(
     ]
     if refs:
         lines.append(f"References: {refs}")
-    if meta.get("deriver"):
-        lines.append(f"Deriver: {meta['deriver']}")
+    if meta.get("deriver") and meta["deriver"] != "unknown":
+        lines.append(f"Deriver: {Path(meta['deriver']).name}")
     lines.extend(f"Sig: {sig}" for sig in meta.get("signatures", []))
     if meta.get("system"):
         lines.append(f"System: {meta['system']}")
@@ -207,10 +220,14 @@ def find_locally_built_paths(client: OCIClient) -> list[str]:
 
     unsigned = 0
     signed = 0
+    skipped_drv = 0
     paths = []
     for item in items:
         path = item.get("path", "")
         if not path or path in baseline:
+            continue
+        if path.endswith(".drv"):
+            skipped_drv += 1
             continue
         sigs = item.get("signatures", item.get("sigs", []))
         if sigs:
@@ -222,5 +239,7 @@ def find_locally_built_paths(client: OCIClient) -> list[str]:
             continue
         paths.append(path)
 
-    info(f"Store scan: {signed} signed (cached), {unsigned} unsigned")
+    info(
+        f"Store scan: {signed} signed (cached), {unsigned} unsigned, {skipped_drv} .drv skipped",
+    )
     return sorted(set(paths))

@@ -16,6 +16,7 @@ from typing import Any
 
 from nixcache.config import REPO, STREAM_CHUNK_SIZE, UPSTREAM_CACHES
 from nixcache.index import fetch_index
+from nixcache.nar import sanitize_narinfo
 from nixcache.oci import OCIClient, fetch_url, open_stream
 
 PORT = int(os.environ.get("NIXCACHE_PORT", "37515"))
@@ -233,7 +234,7 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
 
         entry = cache_index.lookup(store_hash)
         if entry and "narinfo" in entry:
-            body = entry["narinfo"].encode("utf-8")
+            body = sanitize_narinfo(entry["narinfo"]).encode("utf-8")
             self._serve_bytes(body, "text/x-nix-narinfo")
             return
 
