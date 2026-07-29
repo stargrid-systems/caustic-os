@@ -26,4 +26,16 @@ target-version = "py311"
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+select = ["ALL"]
+ignore = [
+    "T201",    # print - used intentionally for stderr logging
+    "S311",    # pseudo-random - not used for crypto
+    "S603",    # subprocess audit - intentional nix/nix-store calls
+    "S607",    # partial executable path - intentional
+    "D203",    # conflicts with D211
+    "D213",    # conflicts with D212
+    "COM812",  # conflicts with ruff format
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/nixcache/proxy.py" = ["S104"]

@@ -1,7 +1,13 @@
+# Copyright (c) 2026 Simon Berger
+# SPDX-License-Identifier: AGPL-3.0-only
+"""Cache-index model with optimistic concurrency."""
+
 import hashlib
 import json
-import os
+import tempfile
 import time
+from pathlib import Path
+from typing import Any
 
 from nixcache.config import (
     CONFIG_MEDIA_TYPE,
@@ -14,13 +20,19 @@ from nixcache.config import (
     info,
     utc_now,
 )
+from nixcache.oci import OCIClient
+
+_HTTP_CONFLICT = 409
+_HTTP_PRECONDITION_FAILED = 412
+_INDEX_MAX_RETRIES = 3
 
 
-class IndexConflict(Exception):
-    pass
+class IndexConflictError(Exception):
+    """Raised when the cache-index was modified concurrently."""
 
 
-def fetch_index(client):
+def fetch_index(client: OCIClient) -> tuple[dict[str, Any] | None, str | None]:
+    """Fetch and parse the cache-index from OCI, returning (index, manifest_digest)."""
     manifest_data, digest = client.get_manifest("cache-index")
     if manifest_data is None:
         return None, None
@@ -40,9 +52,15 @@ def fetch_index(client):
         return None, digest
 
 
-def merge_index(existing, new_entries, gc_roots, public_key=""):
+def merge_index(
+    existing: dict[str, Any] | None,
+    new_entries: dict[str, Any],
+    gc_roots: list[str],
+    public_key: str = "",
+) -> dict[str, Any]:
+    """Merge new entries and GC roots into an existing index."""
     existing = existing or {}
-    entries = {}
+    entries: dict[str, Any] = {}
     entries.update(existing.get("entries", {}))
     entries.update(new_entries)
     return {
@@ -57,7 +75,13 @@ def merge_index(existing, new_entries, gc_roots, public_key=""):
     }
 
 
-def build_index_manifest(index_digest, index_size, config_digest, config_size):
+def build_index_manifest(
+    index_digest: str,
+    index_size: int,
+    config_digest: str,
+    config_size: int,
+) -> str:
+    """Build the OCI manifest JSON for the cache-index."""
     return json.dumps(
         {
             "schemaVersion": 2,
@@ -72,53 +96,68 @@ def build_index_manifest(index_digest, index_size, config_digest, config_size):
                     "mediaType": INDEX_MEDIA_TYPE,
                     "digest": index_digest,
                     "size": index_size,
-                }
+                },
             ],
-        }
+        },
     )
 
 
-def push_index(client, index, work_dir, if_match=None):
+def push_index(
+    client: OCIClient,
+    index: dict[str, Any],
+    work_dir: str,
+    if_match: str | None = None,
+) -> str:
+    """Push the cache-index as OCI blobs + manifest, returning the manifest digest."""
     index_json = json.dumps(index, indent=2, sort_keys=True).encode()
-    index_file = os.path.join(work_dir, "cache-index.json")
-    with open(index_file, "wb") as f:
-        f.write(index_json)
+    index_file = Path(work_dir) / "cache-index.json"
+    index_file.write_bytes(index_json)
 
-    index_digest = client.push_blob(index_file)
-    index_size = os.path.getsize(index_file)
+    index_digest = client.push_blob(str(index_file))
+    index_size = index_file.stat().st_size
 
-    config_file = os.path.join(work_dir, "config.json")
-    with open(config_file, "w") as f:
-        f.write("{}")
-    config_digest = client.push_blob(config_file)
-    config_size = os.path.getsize(config_file)
+    config_file = Path(work_dir) / "config.json"
+    config_file.write_text("{}")
+    config_digest = client.push_blob(str(config_file))
+    config_size = config_file.stat().st_size
 
     manifest = build_index_manifest(index_digest, index_size, config_digest, config_size)
     ok, code = client.push_manifest("cache-index", manifest, if_match=if_match)
     if not ok:
-        if code in (409, 412):
-            raise IndexConflict(f"cache-index conflict (HTTP {code})")
-        raise RuntimeError(f"Failed to push cache-index manifest (HTTP {code})")
+        if code in (_HTTP_CONFLICT, _HTTP_PRECONDITION_FAILED):
+            msg = f"cache-index conflict (HTTP {code})"
+            raise IndexConflictError(msg)
+        msg = f"Failed to push cache-index manifest (HTTP {code})"
+        raise RuntimeError(msg)
 
     return "sha256:" + hashlib.sha256(manifest.encode()).hexdigest()
 
 
-def update_index(client, new_entries, gc_roots, public_key="", work_dir=None, max_retries=3):
+def update_index(
+    client: OCIClient,
+    new_entries: dict[str, Any],
+    gc_roots: list[str],
+    *,
+    public_key: str = "",
+    work_dir: str | None = None,
+) -> dict[str, Any]:
+    """Update the cache-index with optimistic concurrency, retrying on conflict."""
     if work_dir is None:
-        import tempfile
-
         work_dir = tempfile.mkdtemp(prefix="nixcache-")
 
-    merged = None
-    for attempt in range(max_retries):
+    merged: dict[str, Any] | None = None
+    for attempt in range(_INDEX_MAX_RETRIES):
         existing, old_digest = fetch_index(client)
         merged = merge_index(existing, new_entries, gc_roots, public_key)
 
         try:
             pushed_digest = push_index(client, merged, work_dir, if_match=old_digest)
-        except IndexConflict:
-            if attempt < max_retries - 1:
-                info(f"Cache index conflict (attempt {attempt + 1}/{max_retries}), retrying...")
+        except IndexConflictError:
+            if attempt < _INDEX_MAX_RETRIES - 1:
+                info(
+                    f"Cache index conflict (attempt {attempt + 1}/{_INDEX_MAX_RETRIES}),"
+                    " retrying...",
+                )
                 time.sleep(1 + attempt)
                 continue
             raise
@@ -127,13 +166,16 @@ def update_index(client, new_entries, gc_roots, public_key="", work_dir=None, ma
         if current_digest == pushed_digest:
             return merged
 
-        if attempt < max_retries - 1:
+        if attempt < _INDEX_MAX_RETRIES - 1:
             info(
-                f"Cache index changed after push (attempt {attempt + 1}/{max_retries}), retrying..."
+                f"Cache index changed after push (attempt {attempt + 1}/{_INDEX_MAX_RETRIES}),"
+                " retrying...",
             )
             time.sleep(1 + attempt)
             continue
 
-    err(f"Cache index update failed after {max_retries} attempts")
-    assert merged is not None
+    err(f"Cache index update failed after {_INDEX_MAX_RETRIES} attempts")
+    if merged is None:
+        msg = "Cache index update produced no result"
+        raise RuntimeError(msg)
     return merged

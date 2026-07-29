@@ -1,14 +1,23 @@
+# Copyright (c) 2026 Simon Berger
+# SPDX-License-Identifier: AGPL-3.0-only
+"""Prune stale entries from the OCI cache index."""
+
 import argparse
 import sys
 import tempfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 from nixcache.config import info
-from nixcache.index import push_index
+from nixcache.index import fetch_index, push_index
 from nixcache.oci import OCIClient
 
+_FAR_FUTURE = "2099-01-01T00:00:00Z"
 
-def main():
+
+def main() -> int:
+    """Entry point for nixcache-gc."""
     parser = argparse.ArgumentParser(
         description="Prune stale entries from the OCI cache index",
     )
@@ -20,8 +29,6 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    from nixcache.index import fetch_index
-
     client = OCIClient(push=True)
 
     existing, _ = fetch_index(client)
@@ -29,19 +36,18 @@ def main():
         info("No cache index found, nothing to GC")
         return 0
 
-    with open(args.live_file) as f:
-        live = set(f.read().strip().split("\n"))
+    live = set(Path(args.live_file).read_text().strip().split("\n"))
 
     cutoff = (datetime.now(UTC) - timedelta(days=args.retention_days)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
+        "%Y-%m-%dT%H:%M:%SZ",
     )
     info(f"Retention: {args.retention_days} days (cutoff: {cutoff})")
     info(f"Dry run: {args.dry_run}")
 
-    keep = {}
-    delete = []
+    keep: dict[str, Any] = {}
+    delete: list[tuple[str, dict[str, Any]]] = []
     for h, entry in existing.get("entries", {}).items():
-        added = entry.get("added", "2099-01-01T00:00:00Z")
+        added = entry.get("added", _FAR_FUTURE)
         if h in live or added >= cutoff:
             keep[h] = entry
         else:
