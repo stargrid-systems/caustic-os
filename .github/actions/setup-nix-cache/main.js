@@ -1,5 +1,5 @@
-const { execFileSync, execSync, spawn } = require('child_process');
-const { appendFileSync, writeFileSync, createWriteStream, readFileSync } = require('fs');
+const { execSync, spawn } = require('child_process');
+const { appendFileSync, writeFileSync, readFileSync } = require('fs');
 const path = require('path');
 
 const actionPath = __dirname;
@@ -41,17 +41,13 @@ execSync('uv sync --frozen', { cwd: actionPath, stdio: 'inherit' });
 
 console.log('Starting nixcache-oci proxy...');
 const proxyEnv = { ...process.env, NIXCACHE_REPO: repo, NIXCACHE_UPSTREAM: '' };
-const proxy = spawn('uv', ['run', 'nixcache-proxy'], {
+const proxy = spawn('sh', ['-c', 'uv run nixcache-proxy > /tmp/nixcache-proxy.log 2>&1'], {
   cwd: actionPath,
   detached: true,
-  stdio: ['ignore', 'pipe', 'pipe'],
+  stdio: 'ignore',
   env: proxyEnv,
 });
 proxy.unref();
-
-const log = createWriteStream('/tmp/nixcache-proxy.log');
-proxy.stdout.pipe(log);
-proxy.stderr.pipe(log);
 
 let ready = false;
 for (let i = 0; i < 30; i++) {
