@@ -1,7 +1,6 @@
 import argparse
 import os
 import random
-import subprocess
 import sys
 import tempfile
 
@@ -88,18 +87,10 @@ def main():
         receipts = [r for r in receipts if "nar_digest" in r]
 
     gc_roots = []
-    try:
-        result = subprocess.run(
-            ["nix", "path-info", args.out_link],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        top_level = result.stdout.strip()
-        if top_level:
+    if os.path.islink(args.out_link) or os.path.exists(args.out_link):
+        top_level = os.path.realpath(args.out_link)
+        if top_level.startswith("/nix/store/"):
             gc_roots = [store_hash(top_level)]
-    except subprocess.CalledProcessError:
-        pass
 
     info(f"Uploaded {uploaded} NAR(s), updating index")
 
