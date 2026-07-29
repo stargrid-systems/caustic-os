@@ -15,6 +15,11 @@ on:
         required: false
         default: true
         type: boolean
+      purge_unsigned:
+        description: Remove entries whose narinfo has no signature
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -41,6 +46,7 @@ jobs:
           save: false
 
       - name: Compute live closure
+        if: inputs.purge_unsigned != 'true'
         run: |
           nix build --no-link \
             .#nixosConfigurations.devImage.config.system.build.updatePackage
@@ -50,6 +56,10 @@ jobs:
             > "${RUNNER_TEMP}/live-hashes.txt"
           echo "Live hashes: $(wc -l < "${RUNNER_TEMP}/live-hashes.txt")"
 
+      - name: Create empty live set
+        if: inputs.purge_unsigned == 'true'
+        run: touch "${RUNNER_TEMP}/live-hashes.txt"
+
       - name: Prune index
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,6 +68,9 @@ jobs:
           args=()
           if [[ "${{ github.event_name == 'schedule' || inputs.dry_run }}" == "true" ]]; then
             args+=(--dry-run)
+          fi
+          if [[ "${{ inputs.purge_unsigned }}" == "true" ]]; then
+            args+=(--purge-unsigned)
           fi
           uv run --project .github/actions/setup-nix-cache nixcache-gc \
             "${RUNNER_TEMP}/live-hashes.txt" \

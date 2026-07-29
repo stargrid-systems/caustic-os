@@ -170,8 +170,7 @@ jobs:
           nix build \
             --keep-going \
             .#nixosConfigurations.devImage.config.system.build.updatePackage \
-            --out-link update \
-            --print-build-logs
+            --out-link update
 
       - name: Compose OCI artifact
         run: |
@@ -237,7 +236,7 @@ jobs:
           sudo systemctl restart nix-daemon
 
       - name: Run runtime test
-        run: nix build .#tests.aarch64-linux.runtime -L --print-build-logs
+        run: nix build .#tests.aarch64-linux.runtime -L
 
   build-prod:
     name: Build prod image
@@ -281,8 +280,7 @@ jobs:
         run: |
           nix build --impure --keep-going \
             .#nixosConfigurations.production.config.system.build.updatePackage \
-            --out-link update \
-            --print-build-logs
+            --out-link update
 
       - name: Compose OCI artifact
         run: |
