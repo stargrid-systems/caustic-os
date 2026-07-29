@@ -102,4 +102,4 @@ jobs:
           sudo systemctl restart nix-daemon
 
       - name: Run runtime test
-        run: nix build .#tests.x86_64-linux.runtime
+        run: nix build .#tests.x86_64-linux.runtime -L

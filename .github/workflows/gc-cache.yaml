@@ -46,7 +46,6 @@ jobs:
           save: false
 
       - name: Compute live closure
-        if: inputs.purge_unsigned != 'true'
         run: |
           nix build --no-link \
             .#nixosConfigurations.devImage.config.system.build.updatePackage
@@ -55,10 +54,6 @@ jobs:
             | xargs -I{} basename {} | cut -c1-32 | sort -u \
             > "${RUNNER_TEMP}/live-hashes.txt"
           echo "Live hashes: $(wc -l < "${RUNNER_TEMP}/live-hashes.txt")"
-
-      - name: Create empty live set
-        if: inputs.purge_unsigned == 'true'
-        run: touch "${RUNNER_TEMP}/live-hashes.txt"
 
       - name: Prune index
         env:

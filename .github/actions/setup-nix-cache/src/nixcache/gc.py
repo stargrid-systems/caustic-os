@@ -19,7 +19,7 @@ _FAR_FUTURE = "2099-01-01T00:00:00Z"
 def _is_unsigned(entry: dict[str, Any]) -> bool:
     """Return True if the entry's narinfo has no Sig: line."""
     narinfo = entry.get("narinfo", "")
-    return not any(line.startswith("Sig:") for line in narinfo.split("\n"))
+    return not any(line.strip().startswith("Sig:") for line in narinfo.splitlines())
 
 
 def main() -> int:
