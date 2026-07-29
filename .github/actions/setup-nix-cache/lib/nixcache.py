@@ -75,31 +75,55 @@ def store_hash(store_path):
 
 # ── HTTP helpers ──────────────────────────────────────────────────────
 
-def fetch_url(url, headers=None, timeout=60):
-    """Fetch a URL fully into memory. Returns None on HTTP/network errors."""
-    req = urllib.request.Request(url)
-    if headers:
-        for k, v in headers.items():
-            req.add_header(k, v)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read()
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
-        return None
+def fetch_url(url, headers=None, timeout=60, retries=2):
+    """Fetch a URL fully into memory. Returns None on HTTP/network errors.
+
+    Retries on transient 5xx and timeouts with linear backoff.
+    """
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url)
+        if headers:
+            for k, v in headers.items():
+                req.add_header(k, v)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as e:
+            if e.code >= 500 and attempt < retries:
+                time.sleep(1 + attempt)
+                continue
+            return None
+        except (urllib.error.URLError, TimeoutError):
+            if attempt < retries:
+                time.sleep(1 + attempt)
+                continue
+            return None
 
 
-def open_stream(url, headers=None, timeout=120):
-    """Open a streaming connection. Returns (response, content_length) or (None, 0)."""
-    req = urllib.request.Request(url)
-    if headers:
-        for k, v in headers.items():
-            req.add_header(k, v)
-    try:
-        resp = urllib.request.urlopen(req, timeout=timeout)
-        length = resp.headers.get("Content-Length")
-        return resp, int(length) if length else None
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
-        return None, 0
+def open_stream(url, headers=None, timeout=120, retries=2):
+    """Open a streaming connection. Returns (response, content_length) or (None, 0).
+
+    Retries on transient 5xx and timeouts with linear backoff.
+    """
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url)
+        if headers:
+            for k, v in headers.items():
+                req.add_header(k, v)
+        try:
+            resp = urllib.request.urlopen(req, timeout=timeout)
+            length = resp.headers.get("Content-Length")
+            return resp, int(length) if length else None
+        except urllib.error.HTTPError as e:
+            if e.code >= 500 and attempt < retries:
+                time.sleep(1 + attempt)
+                continue
+            return None, 0
+        except (urllib.error.URLError, TimeoutError):
+            if attempt < retries:
+                time.sleep(1 + attempt)
+                continue
+            return None, 0
 
 
 # ── OCI registry client ───────────────────────────────────────────────
@@ -279,9 +303,11 @@ def fetch_index(client):
         index_digest = layers[0]["digest"]
         index_data = client.get_blob(index_digest)
         if index_data is None:
+            err("cache-index blob missing or unreachable")
             return None, digest
         return json.loads(index_data), digest
-    except (json.JSONDecodeError, KeyError):
+    except (json.JSONDecodeError, KeyError) as e:
+        err(f"Failed to parse cache-index: {e}")
         return None, digest
 
 

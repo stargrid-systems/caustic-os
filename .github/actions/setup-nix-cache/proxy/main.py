@@ -65,7 +65,7 @@ class CacheIndex:
             return len(entries)
 
     def _refresh(self):
-        index, _ = fetch_index(client)
+        index, digest = fetch_index(client)
         if index:
             self._index = index
             self._index_file.parent.mkdir(parents=True, exist_ok=True)
@@ -73,6 +73,11 @@ class CacheIndex:
             print(
                 f"[nixcache-proxy] Index refreshed: "
                 f"{len(index.get('entries', {}))} entries",
+                file=sys.stderr,
+            )
+        elif digest:
+            print(
+                "[nixcache-proxy] Index manifest exists but content is missing or corrupt",
                 file=sys.stderr,
             )
 
@@ -169,19 +174,21 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def _stream_response(self, resp, content_length, content_type):
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        if content_length is not None:
-            self.send_header("Content-Length", str(content_length))
-        self.end_headers()
-        if getattr(self, "head_only", False):
-            resp.close()
-            return
-        while True:
-            chunk = resp.read(STREAM_CHUNK_SIZE)
-            if not chunk:
-                break
-            self.wfile.write(chunk)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            if content_length is not None:
+                self.send_header("Content-Length", str(content_length))
+            self.end_headers()
+            if getattr(self, "head_only", False):
+                return
+            while True:
+                chunk = resp.read(STREAM_CHUNK_SIZE)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            sys.stderr.write("[nixcache-proxy] client disconnected during stream\n")
 
     def _serve_public_key(self):
         index = cache_index.get()
