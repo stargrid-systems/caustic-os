@@ -3,17 +3,17 @@
     "aperture-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1785113093,
-        "narHash": "sha256-TAyKT5yOLA4OyRH2Vqmv7pvHSUp1MQnp1lhdeGAznMY=",
+        "lastModified": 1785365999,
+        "narHash": "sha256-H2G1XmTuDnrdBs4YYE4gAm0og80yAHIPmvMBe57jK3U=",
         "owner": "stargrid-systems",
         "repo": "aperture",
-        "rev": "6c481f566ecec43a27e6b89d165f5f0e76e58c33",
+        "rev": "960efaedd2fcb683483f46d1dd1fb0a668bddeac",
         "type": "github"
       },
       "original": {
         "owner": "stargrid-systems",
         "repo": "aperture",
-        "rev": "6c481f566ecec43a27e6b89d165f5f0e76e58c33",
+        "rev": "960efaedd2fcb683483f46d1dd1fb0a668bddeac",
         "type": "github"
       }
     },
@@ -111,7 +111,7 @@
         "type": "github"
       }
     },
-    "nixpkgs_2": {
+    "nixpkgs": {
       "locked": {
         "lastModified": 1784280462,
         "narHash": "sha256-DtoqIqM7VkR6NxAkcLpMwmi02USwWb3JdmNGLyhthc0=",
@@ -154,7 +154,7 @@
         "crane": "crane",
         "impermanence": "impermanence",
         "nixos-hardware": "nixos-hardware",
-        "nixpkgs": "nixpkgs_2",
+        "nixpkgs": "nixpkgs",
         "pre-commit-hooks-nix": "pre-commit-hooks-nix",
         "rust-overlay": "rust-overlay",
         "treefmt-nix": "treefmt-nix"
