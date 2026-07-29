@@ -5,6 +5,7 @@
 import hashlib
 import json
 import lzma
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -114,12 +115,18 @@ def nar_self_check(entry: dict[str, Any]) -> None:
 
 
 def find_locally_built_paths(client: OCIClient) -> list[str]:
-    """Return unsigned store paths not already present in the OCI cache index."""
+    """Return new unsigned store paths not already in the OCI cache index."""
     existing, _ = fetch_index(client)
     own_hashes: set[str] = set()
     if existing:
         own_hashes = set(existing.get("entries", {}).keys())
     info(f"GHCR index contains {len(own_hashes)} previously-cached entries")
+
+    baseline: set[str] = set()
+    baseline_file = Path(os.environ.get("NIXCACHE_STORE_BASELINE", ""))
+    if baseline_file.exists():
+        baseline = set(baseline_file.read_text().split())
+        info(f"Store baseline: {len(baseline)} paths (will skip these)")
 
     result = subprocess.run(
         ["nix", "path-info", "--all", "--json"],
@@ -136,11 +143,11 @@ def find_locally_built_paths(client: OCIClient) -> list[str]:
 
     paths = []
     for item in items:
+        path = item.get("path", "")
+        if not path or path in baseline:
+            continue
         sigs = item.get("signatures", item.get("sigs", []))
         if sigs:
-            continue
-        path = item.get("path", "")
-        if not path:
             continue
         h = store_hash(path)
         if h in own_hashes:

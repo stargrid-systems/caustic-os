@@ -82,3 +82,9 @@ console.log('Installing Determinate Nix...');
 execSync(installCmd, { stdio: 'inherit' });
 
 ghPath('/nix/var/nix/profiles/default/bin');
+
+execSync('nix path-info --all > /tmp/nix-store-baseline.txt', {
+  stdio: 'pipe',
+  env: { ...process.env, PATH: '/nix/var/nix/profiles/default/bin:' + process.env.PATH },
+});
+ghEnv('NIXCACHE_STORE_BASELINE', '/tmp/nix-store-baseline.txt');
