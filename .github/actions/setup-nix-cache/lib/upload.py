@@ -15,6 +15,7 @@ from nixcache import (
     find_locally_built_paths,
     info,
     err,
+    nar_self_check,
     sign_paths,
     store_hash,
     update_index,
@@ -61,6 +62,14 @@ def main():
     if not receipts:
         info("No paths exported successfully")
         return 0
+
+    import random
+    sample = random.choice(receipts)
+    try:
+        nar_self_check(sample)
+    except Exception as e:
+        err(f"ABORTING: {e}")
+        return 1
 
     public_key = ""
     if signing_key and os.path.exists(signing_key + ".pub"):

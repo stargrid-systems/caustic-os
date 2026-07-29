@@ -386,6 +386,7 @@ def update_index(client, new_entries, gc_roots, public_key="", work_dir=None, ma
             continue
 
     err(f"Cache index update failed after {max_retries} attempts")
+    assert merged is not None
     return merged
 
 
@@ -477,10 +478,55 @@ def export_path(store_path, cache_dir):
 
     return {
         "hash": h,
+        "store_path": store_path,
         "nar_file": nar_file,
         "narinfo_text": narinfo_text,
         "nar_size": file_size,
     }
+
+
+def nar_self_check(receipt):
+    """Re-dump one store path and verify the stored NAR matches.
+
+    Catches data corruption in the export pipeline (broken nix-store,
+    filesystem errors, non-deterministic dumps). Raises RuntimeError on
+    mismatch.
+    """
+    import lzma
+
+    store_path = receipt["store_path"]
+    nar_file = receipt["nar_file"]
+    h = receipt["hash"]
+
+    dump = subprocess.Popen(
+        ["nix-store", "--dump", store_path],
+        stdout=subprocess.PIPE,
+    )
+    assert dump.stdout is not None
+    actual_hasher = hashlib.sha256()
+    while True:
+        chunk = dump.stdout.read(65536)
+        if not chunk:
+            break
+        actual_hasher.update(chunk)
+    dump.stdout.close()
+    dump.wait()
+    if dump.returncode != 0:
+        raise RuntimeError(f"self-check: nix-store --dump failed for {store_path}")
+
+    stored_hasher = hashlib.sha256()
+    with lzma.open(nar_file) as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            stored_hasher.update(chunk)
+
+    actual = actual_hasher.hexdigest()
+    stored = stored_hasher.hexdigest()
+    if actual != stored:
+        raise RuntimeError(
+            f"NAR self-check failed for {h}: "
+            f"re-dump sha256 {actual} != stored sha256 {stored}"
+        )
+    info(f"NAR self-check passed for {h}")
 
 
 # ── Path discovery ────────────────────────────────────────────────────
