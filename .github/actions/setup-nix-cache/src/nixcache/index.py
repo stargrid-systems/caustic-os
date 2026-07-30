@@ -14,6 +14,8 @@ from nixcache.config import (
     IMAGE,
     INDEX_MEDIA_TYPE,
     MANIFEST_MEDIA_TYPE,
+    NARINFO_MEDIA_TYPE,
+    NARINFO_TAG_PREFIX,
     REGISTRY,
     REPO,
     err,
@@ -179,3 +181,84 @@ def update_index(
         msg = "Cache index update produced no result"
         raise RuntimeError(msg)
     return merged
+
+
+def push_narinfo_manifest(
+    client: OCIClient,
+    store_hash: str,
+    narinfo_text: str,
+    nar_digest: str,
+    work_dir: str,
+) -> bool:
+    """Push a per-hash narinfo manifest to GHCR under tag ni/{hash}.
+
+    Stores the narinfo as a layer blob with the nar_digest annotation.
+    This allows the proxy to serve narinfos without consulting the central
+    index, eliminating read-modify-write races on the shared index.
+    """
+    narinfo_bytes = narinfo_text.encode("utf-8")
+    narinfo_file = Path(work_dir) / f"ni-{store_hash}.narinfo"
+    narinfo_file.write_bytes(narinfo_bytes)
+    ni_blob_digest = client.push_blob(str(narinfo_file))
+    ni_blob_size = len(narinfo_bytes)
+
+    config_file = Path(work_dir) / "ni-config.json"
+    if not config_file.exists():
+        config_file.write_text("{}")
+    config_digest = client.push_blob(str(config_file))
+    config_size = 2
+
+    manifest = json.dumps({
+        "schemaVersion": 2,
+        "mediaType": MANIFEST_MEDIA_TYPE,
+        "config": {
+            "mediaType": CONFIG_MEDIA_TYPE,
+            "digest": config_digest,
+            "size": config_size,
+        },
+        "layers": [{
+            "mediaType": NARINFO_MEDIA_TYPE,
+            "digest": ni_blob_digest,
+            "size": ni_blob_size,
+            "annotations": {
+                "nar_digest": nar_digest,
+            },
+        }],
+    })
+
+    ok, code = client.push_manifest(
+        f"{NARINFO_TAG_PREFIX}{store_hash}", manifest,
+    )
+    if not ok:
+        err(f"Failed to push narinfo manifest for {store_hash} (HTTP {code})")
+    return ok
+
+
+def fetch_narinfo_manifest(
+    client: OCIClient,
+    store_hash: str,
+) -> tuple[str | None, str | None]:
+    """Fetch narinfo text and nar_digest from a per-hash manifest.
+
+    Returns (narinfo_text, nar_digest) or (None, None) if not found.
+    """
+    manifest_data, _ = client.get_manifest(
+        f"{NARINFO_TAG_PREFIX}{store_hash}",
+    )
+    if manifest_data is None:
+        return None, None
+    try:
+        manifest = json.loads(manifest_data)
+        layers = manifest.get("layers", [])
+        if not layers:
+            return None, None
+        layer = layers[0]
+        nar_digest = layer.get("annotations", {}).get("nar_digest", "")
+        ni_blob_digest = layer["digest"]
+        narinfo_data = client.get_blob(ni_blob_digest)
+        if narinfo_data is None:
+            return None, None
+        return narinfo_data.decode("utf-8"), nar_digest or None
+    except (json.JSONDecodeError, KeyError) as e:
+        err(f"Failed to parse narinfo manifest for {store_hash}: {e}")
+        return None, None

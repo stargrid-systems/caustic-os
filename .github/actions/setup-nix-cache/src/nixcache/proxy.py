@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from nixcache.config import REPO, STREAM_CHUNK_SIZE, UPSTREAM_CACHES
-from nixcache.index import fetch_index
+from nixcache.index import fetch_index, fetch_narinfo_manifest
 from nixcache.nar import sanitize_narinfo
 from nixcache.oci import OCIClient, fetch_url, open_stream
 
@@ -110,8 +110,37 @@ class CacheIndex:
         self.get()
         return self._nar_map.get(nar_basename)
 
+    def add_nar_mapping(self, narinfo_text: str, nar_digest: str) -> None:
+        """Register a nar_digest mapping from narinfo text (thread-safe)."""
+        for line in narinfo_text.split("\n"):
+            if line.startswith("URL: "):
+                url = line[5:].strip()
+                nar_basename = url.removeprefix("nar/")
+                with self._lock:
+                    self._nar_map[nar_basename] = nar_digest
+                return
+
 
 cache_index = CacheIndex()
+
+
+class NarinfoCache:
+    """In-memory cache for per-hash narinfo lookups from GHCR."""
+
+    def __init__(self) -> None:
+        self._cache: dict[str, tuple[str, str]] = {}
+        self._lock = threading.Lock()
+
+    def get(self, store_hash: str) -> tuple[str, str] | None:
+        with self._lock:
+            return self._cache.get(store_hash)
+
+    def put(self, store_hash: str, narinfo: str, nar_digest: str) -> None:
+        with self._lock:
+            self._cache[store_hash] = (narinfo, nar_digest)
+
+
+narinfo_cache = NarinfoCache()
 
 
 def get_nci_response() -> bytes:
@@ -232,6 +261,24 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
 
     def _serve_narinfo(self, path: str) -> None:
         store_hash = path.lstrip("/").removesuffix(".narinfo")
+
+        cached = narinfo_cache.get(store_hash)
+        if cached:
+            narinfo_text, nar_digest = cached
+            if nar_digest:
+                cache_index.add_nar_mapping(narinfo_text, nar_digest)
+            body = sanitize_narinfo(narinfo_text).encode("utf-8")
+            self._serve_bytes(body, "text/x-nix-narinfo")
+            return
+
+        narinfo_text, nar_digest = fetch_narinfo_manifest(client, store_hash)
+        if narinfo_text:
+            narinfo_cache.put(store_hash, narinfo_text, nar_digest or "")
+            if nar_digest:
+                cache_index.add_nar_mapping(narinfo_text, nar_digest)
+            body = sanitize_narinfo(narinfo_text).encode("utf-8")
+            self._serve_bytes(body, "text/x-nix-narinfo")
+            return
 
         entry = cache_index.lookup(store_hash)
         if entry and "narinfo" in entry:
