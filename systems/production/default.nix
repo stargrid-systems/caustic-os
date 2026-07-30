@@ -1,5 +1,6 @@
 {
   lib,
+  config,
   pkgs,
   securebootKeys ? null,
   imageId ? "caustic-os",
@@ -36,6 +37,15 @@ in
       image = {
         id = lib.mkDefault imageId;
         version = lib.mkDefault (lib.strings.trim versionFile);
+      };
+      nixos = {
+        distroName = "Caustic OS";
+        distroId = "caustic-os";
+        extraOSReleaseArgs = {
+          PRETTY_NAME = "Caustic OS ${config.system.image.version}";
+          VERSION = config.system.image.version;
+          VERSION_ID = config.system.image.version;
+        };
       };
     };
 
