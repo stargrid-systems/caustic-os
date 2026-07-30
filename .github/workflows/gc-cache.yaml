@@ -20,6 +20,11 @@ on:
         required: false
         default: false
         type: boolean
+      skip_closure:
+        description: Skip live-closure build (purge unsigned + retention only)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -46,6 +51,7 @@ jobs:
           save: false
 
       - name: Compute live closure
+        if: ${{ !inputs.skip_closure }}
         run: |
           nix build --no-link \
             .#nixosConfigurations.devImage.config.system.build.updatePackage
@@ -54,6 +60,12 @@ jobs:
             | xargs -I{} basename {} | cut -c1-32 | sort -u \
             > "${RUNNER_TEMP}/live-hashes.txt"
           echo "Live hashes: $(wc -l < "${RUNNER_TEMP}/live-hashes.txt")"
+
+      - name: Empty live closure (skip mode)
+        if: ${{ inputs.skip_closure }}
+        run: |
+          : > "${RUNNER_TEMP}/live-hashes.txt"
+          echo "Live closure skipped (empty file)"
 
       - name: Prune index
         env:
