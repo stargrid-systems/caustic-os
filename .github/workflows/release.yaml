@@ -15,6 +15,9 @@ concurrency:
   group: release-${{ github.event_name }}
   cancel-in-progress: false
 
+env:
+  NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
+
 jobs:
   open-pr:
     name: Open release PR
@@ -144,8 +147,6 @@ jobs:
     needs: tag
     runs-on: ubuntu-26.04-arm
     environment: dev
-    env:
-      NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -243,8 +244,6 @@ jobs:
     needs: [tag, runtime-test]
     runs-on: ubuntu-26.04-arm
     environment: prod
-    env:
-      NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
