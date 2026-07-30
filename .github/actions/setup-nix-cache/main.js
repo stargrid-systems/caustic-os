@@ -3,7 +3,7 @@ const { appendFileSync, writeFileSync, readFileSync } = require('fs');
 const path = require('path');
 
 const actionPath = __dirname;
-const publicKey = process.env.INPUT_PUBLIC_KEY || '';
+const publicKey = process.env['INPUT_PUBLIC-KEY'] || '';
 const privateKey = process.env.NIX_CACHE_PRIVATE_KEY || '';
 const repo = process.env.GITHUB_REPOSITORY || '';
 
@@ -80,6 +80,31 @@ for (const c of extraConf) {
 }
 console.log('Installing Determinate Nix...');
 execSync(installCmd, { stdio: 'inherit' });
+
+if (publicKey) {
+  const keyName = publicKey.split(':')[0];
+  const nixConfPath = '/etc/nix/nix.conf';
+  let nixConf = '';
+  try {
+    nixConf = readFileSync(nixConfPath, 'utf8');
+  } catch (err) {
+    console.log(`::warning::Could not read ${nixConfPath}: ${err.message}`);
+  }
+  if (!nixConf.includes(keyName + ':')) {
+    let updated;
+    if (/^extra-trusted-public-keys\s*=/m.test(nixConf)) {
+      updated = nixConf.replace(
+        /^(extra-trusted-public-keys\s*=.*)$/m,
+        `$1 ${publicKey}`
+      );
+    } else {
+      updated = nixConf + `\nextra-trusted-public-keys = ${publicKey}\n`;
+    }
+    writeFileSync('/tmp/nix-conf-patch', updated);
+    execSync(`sudo cp /tmp/nix-conf-patch ${nixConfPath}`, { stdio: 'pipe' });
+    console.log(`Added ${keyName} to trusted-public-keys in ${nixConfPath}`);
+  }
+}
 
 ghPath('/nix/var/nix/profiles/default/bin');
 

@@ -1,7 +1,7 @@
 const { execFileSync } = require('child_process');
 
 const actionPath = __dirname;
-const outLink = process.env.INPUT_OUT_LINK || 'result';
+const outLink = process.env['INPUT_OUT-LINK'] || 'result';
 const save = process.env.INPUT_SAVE || 'true';
 
 if (save !== 'true') {
