@@ -26,6 +26,7 @@ if (privateKey) {
 
 ghEnv('NIXCACHE_REPO', repo);
 if (process.env.GITHUB_TOKEN) ghEnv('GITHUB_TOKEN', process.env.GITHUB_TOKEN);
+if (publicKey) ghEnv('NIXCACHE_PUBLIC_KEY', publicKey);
 
 try {
   execSync('uv --version', { stdio: 'pipe' });

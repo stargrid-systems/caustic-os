@@ -94,7 +94,8 @@ class CacheIndex:
                     continue
                 for line in entry.get("narinfo", "").split("\n"):
                     if line.startswith("URL: "):
-                        self._nar_map[line[5:].strip()] = nar_digest
+                        url = line[5:].strip()
+                        self._nar_map[url.removeprefix("nar/")] = nar_digest
                         break
 
         self._last_fetch = time.time()
@@ -161,7 +162,7 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
             self._serve_status()
         elif path.endswith(".narinfo"):
             self._serve_narinfo(path)
-        elif path.startswith("/nar/"):
+        elif path.startswith("/nar/") or path.endswith(".nar.xz") or path.endswith(".nar"):
             self._serve_nar(path)
         else:
             self.send_error(404)
@@ -247,7 +248,7 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(404)
 
     def _serve_nar(self, path: str) -> None:
-        nar_basename = path.removeprefix("/nar/")
+        nar_basename = path.lstrip("/").removeprefix("nar/")
         ct = "application/x-xz" if nar_basename.endswith(".xz") else "application/x-nix-nar"
 
         nar_digest = cache_index.find_nar_digest(nar_basename)
@@ -258,7 +259,8 @@ class CacheHandler(http.server.BaseHTTPRequestHandler):
                 resp.close()
                 return
 
-        resp, length = upstream_stream_nar(path)
+        upstream_path = f"/nar/{nar_basename}"
+        resp, length = upstream_stream_nar(upstream_path)
         if resp is not None:
             self._stream_response(resp, length, ct)
             resp.close()

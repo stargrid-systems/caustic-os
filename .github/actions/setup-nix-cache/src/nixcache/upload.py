@@ -71,7 +71,10 @@ def _build_index_entries(entries: list[dict[str, Any]]) -> dict[str, dict[str, A
 
 
 def _read_public_key(signing_key: str) -> str:
-    """Read the public key file alongside the signing key."""
+    """Read the public key from env var or the .pub file alongside the signing key."""
+    env_key = os.environ.get("NIXCACHE_PUBLIC_KEY", "")
+    if env_key:
+        return env_key
     if not signing_key:
         return ""
     pub_path = Path(f"{signing_key}.pub")
@@ -138,8 +141,8 @@ def main() -> int:
 
     entries = _upload_nars(client, entries)
     if not entries:
-        info("No new paths uploaded")
-        return 0
+        err("All NAR uploads failed. Cache was not updated.")
+        return 1
 
     gc_roots = _resolve_gc_root(args.out_link)
     new_entries = _build_index_entries(entries)

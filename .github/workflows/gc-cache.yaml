@@ -49,6 +49,8 @@ jobs:
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
           save: false
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Compute live closure
         if: ${{ !inputs.skip_closure }}
@@ -73,7 +75,7 @@ jobs:
           NIXCACHE_REPO: ${{ github.repository }}
         run: |
           args=()
-          if [[ "${{ github.event_name == 'schedule' || inputs.dry_run }}" == "true" ]]; then
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             args+=(--dry-run)
           fi
           if [[ "${{ inputs.purge_unsigned }}" == "true" ]]; then
