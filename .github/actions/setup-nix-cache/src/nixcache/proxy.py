@@ -107,7 +107,7 @@ class CacheIndex:
     def find_nar_digest(self, nar_basename: str) -> str | None:
         """Find the OCI blob digest for a NAR basename."""
         self.get()
-        return self._nar_map.get(f"nar/{nar_basename}")
+        return self._nar_map.get(nar_basename)
 
 
 cache_index = CacheIndex()
