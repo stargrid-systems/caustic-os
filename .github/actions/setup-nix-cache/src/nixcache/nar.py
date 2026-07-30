@@ -201,13 +201,16 @@ def _is_signed_narinfo(existing: dict[str, Any] | None, h: str) -> bool:
     return "Sig:" in entry.get("narinfo", "")
 
 
-def find_locally_built_paths(client: OCIClient) -> list[str]:
-    """Return unsigned store paths that need uploading.
+def find_locally_built_paths(client: OCIClient, force: bool = False) -> list[str]:
+    """Return store paths that need uploading.
 
     Re-includes cached entries whose narinfo lacks signatures so they
     get re-signed on the next build.
+
+    When force is True, skips the index check and returns all non-baseline,
+    non-drv paths. Use this to repair missing NAR blobs.
     """
-    existing, _ = fetch_index(client)
+    existing, _ = fetch_index(client) if not force else (None, None)
     own_hashes: set[str] = set()
     if existing:
         own_hashes = set(existing.get("entries", {}).keys())
@@ -247,13 +250,15 @@ def find_locally_built_paths(client: OCIClient) -> list[str]:
         sigs = item.get("signatures", item.get("sigs", []))
         if sigs:
             signed += 1
-            continue
-        unsigned += 1
-        h = store_hash(path)
-        if h in own_hashes:
-            if _is_signed_narinfo(existing, h):
+            if not force:
                 continue
-            reupload_unsigned += 1
+        unsigned += 1
+        if not force:
+            h = store_hash(path)
+            if h in own_hashes:
+                if _is_signed_narinfo(existing, h):
+                    continue
+                reupload_unsigned += 1
         paths.append(path)
 
     info(

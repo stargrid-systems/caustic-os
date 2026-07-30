@@ -100,12 +100,17 @@ def main() -> int:
         default="result",
         help="Nix output symlink to record as a GC root (default: result)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-upload all non-baseline paths, ignoring index. Use to repair missing NAR blobs.",
+    )
     args = parser.parse_args()
 
     client = OCIClient(push=True)
     signing_key = os.environ.get("NIXCACHE_SIGNING_KEY_FILE", "")
 
-    upload_list = find_locally_built_paths(client)
+    upload_list = find_locally_built_paths(client, force=args.force)
     if not upload_list:
         info("Nothing to upload. Store has no locally-built paths")
         return 0
