@@ -20,6 +20,10 @@ inputs:
     description: Upload locally-built paths at the end of the job via the post hook.
     required: false
     default: "true"
+  force:
+    description: Re-upload all non-baseline paths, ignoring index. Use to repair missing NAR blobs.
+    required: false
+    default: "false"
 
 runs:
   using: node24

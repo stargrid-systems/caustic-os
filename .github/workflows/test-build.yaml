@@ -16,6 +16,11 @@ on:
           - .#nixosConfigurations.devImage.config.system.build.toplevel
           - .#nixosConfigurations.devImage.config.system.build.updatePackage
           - .#nixosConfigurations.production.config.system.build.updatePackage
+      force-upload:
+        description: Re-upload all non-baseline paths to repair missing NAR blobs
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -55,6 +60,7 @@ jobs:
         uses: ./.github/actions/setup-nix-cache
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          force: ${{ inputs.force-upload }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
