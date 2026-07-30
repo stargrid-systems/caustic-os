@@ -21,7 +21,7 @@ if (privateKey) {
   writeFileSync('/tmp/nix-cache.sec', privateKey + '\n', { mode: 0o600 });
   ghEnv('NIXCACHE_SIGNING_KEY_FILE', '/tmp/nix-cache.sec');
 } else {
-  console.log('::notice::NIX_CACHE_PRIVATE_KEY is not set; cache uploads will be unsigned');
+  console.log('::notice::NIX_CACHE_PRIVATE_KEY is not set. Cache uploads will be unsigned.');
 }
 
 ghEnv('NIXCACHE_REPO', repo);

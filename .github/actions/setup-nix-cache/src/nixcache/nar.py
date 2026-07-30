@@ -204,9 +204,8 @@ def _is_signed_narinfo(existing: dict[str, Any] | None, h: str) -> bool:
 def find_locally_built_paths(client: OCIClient) -> list[str]:
     """Return unsigned store paths that need uploading.
 
-    Skips paths already in the OCI cache index IF the cached narinfo
-    has at least one signature. Unsigned cached entries are re-included
-    so they get re-signed and re-uploaded.
+    Re-includes cached entries whose narinfo lacks signatures so they
+    get re-signed on the next build.
     """
     existing, _ = fetch_index(client)
     own_hashes: set[str] = set()
