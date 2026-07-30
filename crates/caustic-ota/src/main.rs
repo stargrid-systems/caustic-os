@@ -146,7 +146,7 @@ fn factory_reset() -> Result<()> {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     fs::write(sentinel, "1\n").context("write factory-reset sentinel")?;
-    tracing::info!("factory reset requested; reboot to complete");
+    tracing::info!("factory reset requested. Reboot to complete.");
     Ok(())
 }
 

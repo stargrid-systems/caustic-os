@@ -107,7 +107,7 @@ def main() -> int:
 
     upload_list = find_locally_built_paths(client)
     if not upload_list:
-        info("Nothing to upload; store has no locally-built paths")
+        info("Nothing to upload. Store has no locally-built paths")
         return 0
 
     info(f"Found {len(upload_list)} locally-built paths to export")
