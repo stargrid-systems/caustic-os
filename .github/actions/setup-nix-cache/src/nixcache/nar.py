@@ -132,8 +132,8 @@ def dump_nars(
         if meta is None:
             continue
         h = store_hash(store_path)
-        nar_url = f"{h}.nar.xz"
-        nar_file = cache_dir / nar_url
+        nar_url = f"nar/{h}.nar.xz"
+        nar_file = cache_dir / f"{h}.nar.xz"
 
         file_hash = _dump_nar(store_path, nar_file)
         file_size = nar_file.stat().st_size
