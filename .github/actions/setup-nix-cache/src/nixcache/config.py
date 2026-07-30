@@ -20,7 +20,7 @@ INDEX_MEDIA_TYPE = "application/vnd.nix.cache.index.v1+json"
 MANIFEST_MEDIA_TYPE = "application/vnd.oci.image.manifest.v1+json"
 CONFIG_MEDIA_TYPE = "application/vnd.oci.image.config.v1+json"
 NARINFO_MEDIA_TYPE = "text/x-nix-narinfo"
-NARINFO_TAG_PREFIX = "ni/"
+NARINFO_TAG_PREFIX = "ni-"
 STREAM_CHUNK_SIZE = 64 * 1024
 _KIB = 1024
 
