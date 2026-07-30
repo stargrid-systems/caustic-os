@@ -37,7 +37,7 @@ def sign_paths(paths: list[str], key_file: str) -> None:
     info(f"Signing {len(paths)} store paths")
     subprocess.run(
         ["nix", "store", "sign", "--key-file", key_file, *paths],
-        check=False,
+        check=True,
     )
 
 
@@ -191,8 +191,23 @@ def nar_self_check(entry: dict[str, Any]) -> None:
     info(f"NAR self-check passed for {entry['hash']}")
 
 
+def _is_signed_narinfo(existing: dict[str, Any] | None, h: str) -> bool:
+    """Check if a cached index entry has at least one Sig: line."""
+    if not existing:
+        return False
+    entry = existing.get("entries", {}).get(h)
+    if entry is None:
+        return False
+    return "Sig:" in entry.get("narinfo", "")
+
+
 def find_locally_built_paths(client: OCIClient) -> list[str]:
-    """Return new unsigned store paths not already in the OCI cache index."""
+    """Return unsigned store paths that need uploading.
+
+    Skips paths already in the OCI cache index IF the cached narinfo
+    has at least one signature. Unsigned cached entries are re-included
+    so they get re-signed and re-uploaded.
+    """
     existing, _ = fetch_index(client)
     own_hashes: set[str] = set()
     if existing:
@@ -221,6 +236,7 @@ def find_locally_built_paths(client: OCIClient) -> list[str]:
     unsigned = 0
     signed = 0
     skipped_drv = 0
+    reupload_unsigned = 0
     paths = []
     for item in items:
         path = item.get("path", "")
@@ -236,10 +252,14 @@ def find_locally_built_paths(client: OCIClient) -> list[str]:
         unsigned += 1
         h = store_hash(path)
         if h in own_hashes:
-            continue
+            if _is_signed_narinfo(existing, h):
+                continue
+            reupload_unsigned += 1
         paths.append(path)
 
     info(
-        f"Store scan: {signed} signed (cached), {unsigned} unsigned, {skipped_drv} .drv skipped",
+        f"Store scan: {signed} signed (cached), {unsigned} unsigned"
+        f" ({reupload_unsigned} re-upload to fix missing signatures),"
+        f" {skipped_drv} .drv skipped",
     )
     return sorted(set(paths))
