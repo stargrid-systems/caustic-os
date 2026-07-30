@@ -13,14 +13,21 @@ in
 
     package = lib.mkPackageOption pkgs "aperture" { };
 
-    addr = lib.mkOption {
+    httpAddr = lib.mkOption {
       type = lib.types.str;
       default = "[::]:80";
-      example = "[::]:443";
+      example = "[::]:8080";
       description = ''
-        Socket address aperture will bind to, in `[ip]:port` form.
-        `[::]:` is dual-stack. Ports below 1024 use CAP_NET_BIND_SERVICE.
+        HTTP listener address. HTTP serves the full API when no HTTPS
+        listener is configured, or redirects to HTTPS when one is.
       '';
+    };
+
+    httpsAddr = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "[::]:443";
+      description = "HTTPS listener address. null disables HTTPS.";
     };
 
     dataDir = lib.mkOption {
@@ -52,7 +59,20 @@ in
         Group = "aperture";
         StateDirectory = "aperture";
         RuntimeDirectory = "aperture";
-        ExecStart = "${lib.getExe' cfg.package "aperture"} run --addr ${cfg.addr} --data-dir ${cfg.dataDir}";
+        ExecStart = builtins.concatStringsSep " " (
+          [
+            (lib.getExe' cfg.package "aperture")
+            "run"
+            "--http-addr"
+            cfg.httpAddr
+            "--data-dir"
+            cfg.dataDir
+          ]
+          ++ lib.optionals (cfg.httpsAddr != null) [
+            "--https-addr"
+            cfg.httpsAddr
+          ]
+        );
         Restart = "on-failure";
         RestartSec = "5s";
 
