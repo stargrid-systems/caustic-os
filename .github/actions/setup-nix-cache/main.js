@@ -75,6 +75,7 @@ if (publicKey) {
   extraConf.push(`extra-trusted-public-keys = ${publicKey}`);
 }
 extraConf.push('system-features = nixos-test benchmark big-parallel kvm');
+extraConf.push('log-format = bar-with-logs');
 
 let installCmd = 'curl -fsSL https://install.determinate.systems/nix | sh -s -- install --no-confirm';
 for (const c of extraConf) {
