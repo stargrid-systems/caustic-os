@@ -68,7 +68,7 @@ in
       serviceConfig = {
         Type = "simple";
         StateDirectory = "dropbear";
-        ExecStart = "${lib.getExe cfg.package} ${lib.concatStringsSep " " args}";
+        ExecStart = "${lib.getExe' cfg.package "dropbear"} ${lib.concatStringsSep " " args}";
         Restart = "on-failure";
         RestartSec = "5s";
 
