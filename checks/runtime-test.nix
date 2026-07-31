@@ -44,7 +44,6 @@ pkgs.testers.runNixOSTest {
         cores = 2;
         memorySize = 1024;
         emptyDiskImages = [ 512 ];
-        useKVM = pkgs.stdenv.hostPlatform.isx86_64;
       };
 
       networking.useDHCP = true;
