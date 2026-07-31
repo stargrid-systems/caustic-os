@@ -118,11 +118,14 @@
         let
           craneLib = craneLibFor system;
           cargoToml = builtins.fromTOML (builtins.readFile "${aperture-src}/aperture/Cargo.toml");
+          version =
+            let v = cargoToml.package.version or null;
+            in if builtins.isString v then v else "0.0.1";
         in
         craneLib.buildPackage {
           src = aperture-src;
           pname = cargoToml.package.name;
-          version = cargoToml.package.version or "0.0.1";
+          inherit version;
           strictDeps = true;
           doCheck = false;
         };
