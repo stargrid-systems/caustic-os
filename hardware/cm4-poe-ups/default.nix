@@ -1,5 +1,4 @@
 # https://www.waveshare.com/wiki/CM4-POE-UPS-BASE
-{ nixos-hardware }:
 {
   lib,
   config,
@@ -9,8 +8,6 @@ let
   cfg = config.hardware.caustic.cm4PoeUps;
 in
 {
-  imports = [ "${nixos-hardware}/raspberry-pi/4" ];
-
   options.hardware.caustic.cm4PoeUps = {
     enable = lib.mkEnableOption "Waveshare CM4-POE-UPS-BASE (RTC, fan, INA219)";
   };
