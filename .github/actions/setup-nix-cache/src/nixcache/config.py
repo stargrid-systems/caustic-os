@@ -35,6 +35,16 @@ def err(msg: str) -> None:
     print(f"!!! {msg}", file=sys.stderr)
 
 
+def debug(msg: str) -> None:
+    """Log a verbose message to stderr, only when Actions step debug logging is on.
+
+    Step debug logging is enabled by the repo secret ACTIONS_STEP_DEBUG,
+    which surfaces as RUNNER_DEBUG=1 in every step.
+    """
+    if os.environ.get("RUNNER_DEBUG") == "1":
+        print(f"~~~ {msg}", file=sys.stderr)
+
+
 def utc_now() -> str:
     """Return the current UTC time as an ISO 8601 string."""
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
