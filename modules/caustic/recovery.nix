@@ -25,10 +25,12 @@ in
   config = lib.mkIf cfg.enable {
     boot = {
       kernelParams = [
-        "console=ttyAMA0,115200"
         "console=tty1"
+        "console=ttyAMA0,115200"
+        "earlycon=pl011,mmio32,0xfe201000"
+        "ignore_loglevel"
         "systemd.show_status=1"
-        "systemd.log_level=warn"
+        "systemd.log_level=info"
       ];
 
       initrd.systemd = {

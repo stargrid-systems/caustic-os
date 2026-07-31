@@ -47,7 +47,6 @@
       crane,
       rust-overlay,
       aperture-src,
-      nixos-hardware,
       impermanence,
       ...
     }:
@@ -237,7 +236,7 @@
       overlays.default = osOverlay;
 
       nixosModules = {
-        cm4PoeUps = import ./hardware/cm4-poe-ups { inherit nixos-hardware; };
+        cm4PoeUps = import ./hardware/cm4-poe-ups;
         aperture = import ./modules/services/aperture.nix;
         dropbear = import ./modules/services/dropbear.nix;
         caustic = import ./modules/caustic;
