@@ -23,12 +23,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Nix with OCI cache
-        uses: ./.github/actions/setup-nix-cache
+      - name: Setup Nix
+        uses: ./.github/actions/setup-nix
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
 
       - name: nix flake check
         run: nix flake check
@@ -62,16 +60,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Enable unprivileged user namespaces
-        run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-
-      - name: Setup Nix with OCI cache
-        uses: ./.github/actions/setup-nix-cache
+      - name: Setup Nix
+        uses: ./.github/actions/setup-nix
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Evaluate flake for aarch64-linux
         run: nix flake show
@@ -96,23 +88,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Enable KVM
-        run: |
-          if ! test -e /dev/kvm; then
-            sudo modprobe kvm
-          fi
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          if test -e /dev/kvm; then
-            sudo chmod 0666 /dev/kvm
-          fi
-
-      - name: Setup Nix with OCI cache
-        uses: ./.github/actions/setup-nix-cache
+      - name: Setup Nix
+        uses: ./.github/actions/setup-nix
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          kvm: true
 
       - name: Run runtime test
         run: nix build .#tests.${{ matrix.nix_system }}.runtime -L
