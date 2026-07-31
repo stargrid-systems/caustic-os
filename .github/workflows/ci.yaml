@@ -96,3 +96,25 @@ jobs:
 
       - name: Run runtime test
         run: nix build .#tests.${{ matrix.nix_system }}.runtime -L
+
+  ci-pass:
+    name: CI Pass
+    runs-on: ubuntu-slim
+    if: always()
+    needs: [quick-checks, rust, build-images, runtime-test]
+    steps:
+      - name: Evaluate job results
+        env:
+          QUICK_CHECKS: ${{ needs.quick-checks.result }}
+          RUST: ${{ needs.rust.result }}
+          BUILD_IMAGES: ${{ needs.build-images.result }}
+          RUNTIME_TEST: ${{ needs.runtime-test.result }}
+        run: |
+          for name in QUICK_CHECKS RUST BUILD_IMAGES RUNTIME_TEST; do
+            result="${!name}"
+            echo "$name: $result"
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              echo "::error::$name did not pass"
+              exit 1
+            fi
+          done
