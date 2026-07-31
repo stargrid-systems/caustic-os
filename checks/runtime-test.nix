@@ -3,19 +3,16 @@
   self,
 }:
 let
-  inherit (pkgs) lib runCommand;
+  inherit (pkgs) lib;
   inherit (pkgs.stdenv.hostPlatform) system;
 
   # Force the real dev/prod systems to build on aarch64 so
   # kernel/initrd/module regressions fail CI instead of surfacing
   # only at flash time.
-  realImageBuilds = lib.optional (system == "aarch64-linux") (
-    runCommand "caustic-image-builds" { } ''
-      echo ${self.nixosConfigurations.devImage.config.system.build.toplevel}
-      echo ${self.nixosConfigurations.production.config.system.build.toplevel}
-      touch $out
-    ''
-  );
+  realImageBuilds = lib.optionals (system == "aarch64-linux") [
+    self.nixosConfigurations.devImage.config.system.build.toplevel
+    self.nixosConfigurations.production.config.system.build.toplevel
+  ];
 in
 pkgs.testers.runNixOSTest {
   name = "caustic-runtime";
@@ -71,7 +68,9 @@ pkgs.testers.runNixOSTest {
         neededForBoot = true;
       };
 
-      environment.systemPackages = [ pkgs.curl ] ++ realImageBuilds;
+      system.extraDependencies = realImageBuilds;
+
+      environment.systemPackages = [ pkgs.curl ];
 
       system.stateVersion = "26.05";
     };
