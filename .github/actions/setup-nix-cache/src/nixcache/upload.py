@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from nixcache.config import err, fmt_size, info, store_hash, utc_now
-from nixcache.index import update_index
+from nixcache.index import push_narinfo_manifest, update_index
 from nixcache.nar import (
     dump_nars,
     find_locally_built_paths,
@@ -146,6 +146,15 @@ def main() -> int:
 
     gc_roots = _resolve_gc_root(args.out_link)
     new_entries = _build_index_entries(entries)
+
+    info(f"Pushing {len(entries)} per-hash narinfo manifests")
+    ni_ok = 0
+    for entry in entries:
+        if push_narinfo_manifest(
+            client, entry["hash"], entry["text"], entry["nar_digest"], work_dir,
+        ):
+            ni_ok += 1
+    info(f"Pushed {ni_ok}/{len(entries)} narinfo manifests")
 
     info(f"Uploaded {len(entries)} NAR(s), updating index")
     index = update_index(client, new_entries, gc_roots, public_key=public_key, work_dir=work_dir)
