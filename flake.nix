@@ -65,6 +65,11 @@
           inherit system;
           overlays = [
             rust-overlay.overlays.default
+            (_final: prev: {
+              vhost-device-vsock = prev.vhost-device-vsock.overrideAttrs (_old: {
+                doCheck = false;
+              });
+            })
           ]
           ++ lib.optional (system == "aarch64-linux") (
             _final: prev: {
