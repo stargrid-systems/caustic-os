@@ -77,9 +77,19 @@ jobs:
         run: nix flake show --system aarch64-linux
 
   runtime-test:
-    name: Runtime test
-    runs-on: ubuntu-26.04
+    name: Runtime test (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     if: github.event_name == 'merge_group'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-26.04
+            nix_system: x86_64-linux
+          - arch: aarch64
+            runner: ubuntu-26.04-arm
+            nix_system: aarch64-linux
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -91,6 +101,12 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           if test -e /dev/kvm; then sudo chmod 0666 /dev/kvm; fi
+
+      - name: Load vsock kernel modules
+        if: matrix.arch == 'aarch64'
+        run: |
+          sudo modprobe vhost_vsock
+          sudo modprobe vhost_loopback
 
       - name: Setup Nix with OCI cache
         uses: ./.github/actions/setup-nix-cache
@@ -105,4 +121,4 @@ jobs:
           sudo systemctl restart nix-daemon
 
       - name: Run runtime test
-        run: nix build .#tests.x86_64-linux.runtime -L
+        run: nix build .#tests.${{ matrix.nix_system }}.runtime -L
