@@ -26,6 +26,8 @@ pkgs.testers.runNixOSTest {
         persist.enable = true;
       };
 
+      users.users.root.hashedPassword = pkgs.lib.mkForce null;
+
       services = {
         aperture = {
           enable = true;

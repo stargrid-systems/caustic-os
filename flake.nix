@@ -96,7 +96,7 @@
         in
         pre-commit-hooks-nix.lib.${system}.run {
           src = ./.;
-          settings.treefmt.package = treefmtEval.config.build.wrapper;
+          hooks.treefmt.package = treefmtEval.config.build.wrapper;
           hooks = {
             statix.enable = true;
             deadnix.enable = true;
@@ -123,7 +123,8 @@
         in
         craneLib.buildPackage {
           src = aperture-src;
-          inherit (crateName) pname version;
+          inherit (crateName) pname;
+          version = crateName.version or "0.0.1";
           strictDeps = true;
           doCheck = false;
         };
