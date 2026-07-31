@@ -18,6 +18,7 @@ from nixcache.config import (
     NARINFO_TAG_PREFIX,
     REGISTRY,
     REPO,
+    debug,
     err,
     info,
     utc_now,
@@ -189,12 +190,15 @@ def push_narinfo_manifest(
     narinfo_text: str,
     nar_digest: str,
     work_dir: str,
-) -> bool:
+) -> tuple[bool, int]:
     """Push a per-hash narinfo manifest to GHCR under tag ni/{hash}.
 
     Stores the narinfo as a layer blob with the nar_digest annotation.
     This allows the proxy to serve narinfos without consulting the central
     index, eliminating read-modify-write races on the shared index.
+
+    Returns (success, http_status_code) so the caller can aggregate results
+    instead of logging one line per path.
     """
     narinfo_bytes = narinfo_text.encode("utf-8")
     narinfo_file = Path(work_dir) / f"ni-{store_hash}.narinfo"
@@ -208,30 +212,35 @@ def push_narinfo_manifest(
     config_digest = client.push_blob(str(config_file))
     config_size = 2
 
-    manifest = json.dumps({
-        "schemaVersion": 2,
-        "mediaType": MANIFEST_MEDIA_TYPE,
-        "config": {
-            "mediaType": CONFIG_MEDIA_TYPE,
-            "digest": config_digest,
-            "size": config_size,
-        },
-        "layers": [{
-            "mediaType": NARINFO_MEDIA_TYPE,
-            "digest": ni_blob_digest,
-            "size": ni_blob_size,
-            "annotations": {
-                "nar_digest": nar_digest,
+    manifest = json.dumps(
+        {
+            "schemaVersion": 2,
+            "mediaType": MANIFEST_MEDIA_TYPE,
+            "config": {
+                "mediaType": CONFIG_MEDIA_TYPE,
+                "digest": config_digest,
+                "size": config_size,
             },
-        }],
-    })
+            "layers": [
+                {
+                    "mediaType": NARINFO_MEDIA_TYPE,
+                    "digest": ni_blob_digest,
+                    "size": ni_blob_size,
+                    "annotations": {
+                        "nar_digest": nar_digest,
+                    },
+                }
+            ],
+        }
+    )
 
     ok, code = client.push_manifest(
-        f"{NARINFO_TAG_PREFIX}{store_hash}", manifest,
+        f"{NARINFO_TAG_PREFIX}{store_hash}",
+        manifest,
     )
     if not ok:
-        err(f"Failed to push narinfo manifest for {store_hash} (HTTP {code})")
-    return ok
+        debug(f"Failed to push narinfo manifest for {store_hash} (HTTP {code})")
+    return ok, code
 
 
 def fetch_narinfo_manifest(
