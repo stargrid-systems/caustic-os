@@ -58,28 +58,36 @@
       perSystem = nixpkgs.lib.genAttrs supportedSystems;
       inherit (nixpkgs) lib;
 
+      baseOverlays = [
+        rust-overlay.overlays.default
+        (_final: prev: {
+          vhost-device-vsock = prev.vhost-device-vsock.overrideAttrs (_old: {
+            doCheck = false;
+          });
+        })
+      ];
+
+      autoPatchelfOverlay = _final: prev: {
+        "auto-patchelf" = prev."auto-patchelf".overrideAttrs (old: {
+          postInstall = (old.postInstall or "") + ''
+            sed -i '1 a import sys; sys.path.insert(0, "${prev.python3Packages.pyelftools}/lib/python${prev.python3.pythonVersion}/site-packages")' \
+              $out/bin/auto-patchelf
+          '';
+        });
+      };
+
       pkgsFor =
         system:
         import nixpkgs {
           inherit system;
-          overlays = [
-            rust-overlay.overlays.default
-            (_final: prev: {
-              vhost-device-vsock = prev.vhost-device-vsock.overrideAttrs (_old: {
-                doCheck = false;
-              });
-            })
-          ]
-          ++ lib.optional (system == "aarch64-linux") (
-            _final: prev: {
-              "auto-patchelf" = prev."auto-patchelf".overrideAttrs (old: {
-                postInstall = (old.postInstall or "") + ''
-                  sed -i '1 a import sys; sys.path.insert(0, "${prev.python3Packages.pyelftools}/lib/python${prev.python3.pythonVersion}/site-packages")' \
-                    $out/bin/auto-patchelf
-                '';
-              });
-            }
-          );
+          overlays = baseOverlays ++ lib.optional (system == "aarch64-linux") autoPatchelfOverlay;
+        };
+
+      systemPkgsFor =
+        system:
+        import nixpkgs {
+          inherit system;
+          overlays = baseOverlays;
         };
 
       treefmtModule = {
@@ -295,20 +303,12 @@
         }
       );
 
-      tests = perSystem (
-        system:
-        let
-          pkgs = pkgsFor system;
-        in
-        {
-          runtime = import ./checks/runtime-test.nix {
-            inherit
-              pkgs
-              self
-              ;
-          };
-        }
-      );
+      tests = perSystem (system: {
+        runtime = import ./checks/runtime-test.nix {
+          pkgs = systemPkgsFor system;
+          inherit self;
+        };
+      });
 
       devShells = perSystem (
         system:
