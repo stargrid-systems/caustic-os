@@ -117,14 +117,12 @@
         system:
         let
           craneLib = craneLibFor system;
-          crateName = craneLib.crateNameFromCargoToml {
-            cargoToml = "${aperture-src}/aperture/Cargo.toml";
-          };
+          crateName = craneLib.crateNameFromCargoToml { src = aperture-src; };
         in
         craneLib.buildPackage {
           src = aperture-src;
-          inherit (crateName) pname;
-          version = crateName.version or "0.0.1";
+          pname = "aperture";
+          inherit (crateName) version;
           strictDeps = true;
           doCheck = false;
         };
