@@ -67,12 +67,6 @@
         })
       ];
 
-      # Fixes auto-patchelf's pyelftools import on aarch64. Wanted only for pkgs
-      # that build prebuilt/Rust toolchains from source (crane + rust-bin, and
-      # nixpkgs' from-source rustc bootstrap). Must NOT leak into system closures
-      # whose kernel should stay stock: auto-patchelf is a transitive input of
-      # rustc/rust-bindgen, so overriding it re-hashes them and makes the kernel
-      # unsubstitutable from cache.nixos.org.
       autoPatchelfOverlay = _final: prev: {
         "auto-patchelf" = prev."auto-patchelf".overrideAttrs (old: {
           postInstall = (old.postInstall or "") + ''
@@ -89,9 +83,6 @@
           overlays = baseOverlays ++ lib.optional (system == "aarch64-linux") autoPatchelfOverlay;
         };
 
-      # pkgs for NixOS system closures (e.g. the runtime-test VM). Same as
-      # pkgsFor but without the auto-patchelf overlay, so the kernel uses the
-      # stock rust toolchain and stays substitutable from cache.nixos.org.
       systemPkgsFor =
         system:
         import nixpkgs {
