@@ -159,6 +159,29 @@
         aperture = apertureFor final.stdenv.hostPlatform.system;
         caustic-ota = causticOtaFor final.stdenv.hostPlatform.system;
 
+        # nixpkgs aarch64 pins systemd 260.2, whose EFI stub loads the inner
+        # kernel without honoring the arm64 64k SectionAlignment. The kernel's
+        # own stub then refuses to boot ("FIRMWARE BUG: kernel image not
+        # aligned on 64k boundary") and the CM4 hangs right after
+        # ExitBootServices. Backport the allocation fix from upstream
+        # systemd#42463 (landed in v262). Drop once nixpkgs aarch64 has >= 262.
+        # https://github.com/systemd/systemd/issues/42443
+        systemd =
+          if prev.stdenv.hostPlatform.isAarch64 && lib.versionOlder prev.systemd.version "262" then
+            prev.systemd.overrideAttrs (old: {
+              postPatch = (old.postPatch or "") + ''
+                substituteInPlace src/boot/linux.c \
+                  --replace-fail \
+                    '_cleanup_pages_ Pages loaded_kernel_pages = xmalloc_pages(' \
+                    '_cleanup_pages_ Pages loaded_kernel_pages = xmalloc_aligned_pages(' \
+                  --replace-fail \
+                    'AllocateAnyPages, EfiLoaderCode, EFI_SIZE_TO_PAGES(kernel_size_in_memory), 0);' \
+                    'AllocateAnyPages, EfiLoaderCode, EFI_SIZE_TO_PAGES(kernel_size_in_memory), 0x10000, 0);'
+              '';
+            })
+          else
+            prev.systemd;
+
         # nixpkgs wraps ukify with binutils in PATH but not sbsigntool.
         # ukify needs sbsign/sbverify when SecureBootPrivateKey is set, and
         # its wrapper overrides PATH, so nativeBuildInputs in callers don't help.
