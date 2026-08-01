@@ -52,7 +52,7 @@ in
     services.caustic-ota.registry = lib.mkDefault otaRegistry;
 
     boot = {
-      kernelPackages = pkgs.linuxPackages_7_1;
+      kernelPackages = pkgs.linuxPackages_6_12;
       loader = {
         grub.enable = false;
         generic-extlinux-compatible.enable = false;
