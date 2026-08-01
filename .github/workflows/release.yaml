@@ -88,6 +88,7 @@ jobs:
             echo
             git log "${range}" --pretty=format:'- %s' --no-merges | head -100 || true
             echo
+            echo "<!-- release-notes-end -->"
             echo
             echo "Merging this PR cuts release **${VERSION}**."
             echo "The merge commit is tagged. The dev image builds immediately."
@@ -135,7 +136,7 @@ jobs:
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          printf '%s' "$PR_BODY" > /tmp/release-notes.md
+          printf '%s' "$PR_BODY" | sed '/<!-- release-notes-end -->/,$d' > /tmp/release-notes.md
           gh release create "${VERSION}" \
             --target "${MERGE_SHA}" \
             --title "${VERSION}" \
