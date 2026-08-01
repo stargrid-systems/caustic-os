@@ -167,6 +167,14 @@ jobs:
             .#nixosConfigurations.devImage.config.system.build.updatePackage \
             --out-link update
 
+      - name: Exclude image-only paths from cache
+        run: |
+          comm -13 \
+            <(nix path-info --recursive \
+              .#nixosConfigurations.devImage.config.system.build.toplevel | sort) \
+            <(nix path-info --recursive "$(readlink -f update)" | sort) \
+            >> "$NIXCACHE_STORE_BASELINE"
+
       - name: Compose OCI artifact
         run: |
           mkdir -p artifact
@@ -256,6 +264,16 @@ jobs:
           nix build --impure --keep-going \
             .#nixosConfigurations.production.config.system.build.updatePackage \
             --out-link update
+
+      - name: Exclude image-only paths from cache
+        env:
+          CAUSTIC_SECUREBOOT_KEYS: ${{ env.keys_dir }}
+        run: |
+          comm -13 \
+            <(nix path-info --recursive --impure \
+              .#nixosConfigurations.production.config.system.build.toplevel | sort) \
+            <(nix path-info --recursive "$(readlink -f update)" | sort) \
+            >> "$NIXCACHE_STORE_BASELINE"
 
       - name: Compose OCI artifact
         run: |
