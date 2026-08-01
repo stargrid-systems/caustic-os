@@ -35,9 +35,15 @@ pkgs.testers.runNixOSTest {
         persist.enable = true;
       };
 
-      # Match the production/devImage kernel so the test exercises
-      # the real kernel the device boots, not the nixpkgs default.
-      boot.kernelPackages = pkgs.linuxPackages_7_1;
+      # On aarch64, use the production/devImage kernel so the test
+      # exercises the real kernel the device boots. production is
+      # aarch64-only, so on other arches (where the test only covers
+      # arch-independent services) the nixpkgs default kernel is fine.
+      boot.kernelPackages =
+        if pkgs.stdenv.hostPlatform.isAarch64 then
+          self.nixosConfigurations.production.config.boot.kernelPackages
+        else
+          pkgs.linuxPackages;
 
       users.users.root.hashedPassword = pkgs.lib.mkForce null;
 
