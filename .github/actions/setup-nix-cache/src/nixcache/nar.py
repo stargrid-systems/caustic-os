@@ -69,7 +69,7 @@ def _dump_nar(store_path: str, dest: Path) -> str:
             stdout=subprocess.PIPE,
         )
         xz = subprocess.Popen(
-            ["xz", "-6", "-e"],
+            ["xz", "-2"],
             stdin=dump.stdout,
             stdout=f,
         )
