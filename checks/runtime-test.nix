@@ -3,7 +3,16 @@
   self,
 }:
 let
+  inherit (pkgs) lib;
   inherit (pkgs.stdenv.hostPlatform) system;
+
+  # Force the real dev/prod systems to build on aarch64 so
+  # kernel/initrd/module regressions fail CI instead of surfacing
+  # only at flash time.
+  realImageBuilds = lib.optionals (system == "aarch64-linux") [
+    self.nixosConfigurations.devImage.config.system.build.toplevel
+    self.nixosConfigurations.production.config.system.build.toplevel
+  ];
 in
 pkgs.testers.runNixOSTest {
   name = "caustic-runtime";
@@ -25,6 +34,10 @@ pkgs.testers.runNixOSTest {
         users.enable = true;
         persist.enable = true;
       };
+
+      # Match the production/devImage kernel so the test exercises
+      # the real kernel the device boots, not the nixpkgs default.
+      boot.kernelPackages = pkgs.linuxPackages_7_1;
 
       users.users.root.hashedPassword = pkgs.lib.mkForce null;
 
@@ -54,6 +67,8 @@ pkgs.testers.runNixOSTest {
         fsType = "ext4";
         neededForBoot = true;
       };
+
+      system.extraDependencies = realImageBuilds;
 
       environment.systemPackages = [ pkgs.curl ];
 

@@ -7,14 +7,16 @@ import json
 import lzma
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from nixcache.config import info, sha256_file, store_hash
+from nixcache.config import err, info, sha256_file, store_hash
 from nixcache.index import fetch_index
 from nixcache.oci import OCIClient
 
 _NAR_CHUNK_SIZE = 65536
+_DUMP_WORKERS = min(os.cpu_count() or 4, 8)
 
 
 def sanitize_narinfo(text: str) -> str:
@@ -119,36 +121,51 @@ def dump_nars(
     """Sign, dump, and build narinfo for each path individually.
 
     Unlike nix copy --to, this only processes the given paths
-    and does NOT export their dependency closure.
+    and does NOT export their dependency closure. Dumping is
+    CPU-bound (xz), so paths are processed in parallel.
     """
     sign_paths(paths, signing_key)
     cache_dir.mkdir(parents=True, exist_ok=True)
     info_map = _query_path_info(paths)
-    info(f"Dumping {len(paths)} NARs individually")
+    info(f"Dumping {len(paths)} NARs in parallel ({_DUMP_WORKERS} workers)")
 
-    entries: list[dict[str, Any]] = []
-    for store_path in paths:
+    def dump_one(store_path: str) -> dict[str, Any] | None:
+        """Dump a single store path to a NAR and build its narinfo."""
         meta = info_map.get(store_path)
         if meta is None:
-            continue
+            return None
         h = store_hash(store_path)
         nar_url = f"nar/{h}.nar.xz"
         nar_file = cache_dir / f"{h}.nar.xz"
-
         file_hash = _dump_nar(store_path, nar_file)
         file_size = nar_file.stat().st_size
         narinfo_text = _build_narinfo(meta, nar_url, file_hash, file_size)
+        return {
+            "hash": h,
+            "text": narinfo_text,
+            "nar_file": str(nar_file),
+            "nar_size": file_size,
+            "storepath": store_path,
+            "url": nar_url,
+        }
 
-        entries.append(
-            {
-                "hash": h,
-                "text": narinfo_text,
-                "nar_file": str(nar_file),
-                "nar_size": file_size,
-                "storepath": store_path,
-                "url": nar_url,
-            }
-        )
+    entries: list[dict[str, Any]] = []
+    failures = 0
+    with ThreadPoolExecutor(max_workers=_DUMP_WORKERS) as pool:
+        futures = {pool.submit(dump_one, p): p for p in paths}
+        for future in as_completed(futures):
+            path = futures[future]
+            try:
+                result = future.result()
+            except (RuntimeError, OSError) as e:
+                err(f"Failed to dump NAR for {path}: {e}")
+                failures += 1
+                continue
+            if result is not None:
+                entries.append(result)
+
+    if failures:
+        err(f"{failures} dump(s) failed, continuing with {len(entries)} successful")
 
     info(f"Dumped {len(entries)} NARs")
     return entries

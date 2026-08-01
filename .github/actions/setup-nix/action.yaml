@@ -1,0 +1,59 @@
+name: Setup Nix
+
+description: |
+  Prepares the runner for Nix builds: unprivileged user namespaces,
+  optional KVM for NixOS tests, and the OCI cache proxy.
+
+inputs:
+  public-key:
+    description: Public key for the nix cache.
+    required: true
+  out-link:
+    description: Nix output symlink to record as a GC root.
+    required: false
+    default: result
+  save:
+    description: Upload locally-built paths at the end of the job.
+    required: false
+    default: "true"
+  force:
+    description: Re-upload all non-baseline paths.
+    required: false
+    default: "false"
+  kvm:
+    description: Set up KVM and /dev/kvm for NixOS VM tests.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Enable unprivileged user namespaces
+      shell: bash
+      run: |
+        if sysctl -n kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        fi
+
+    - name: Enable KVM
+      if: inputs.kvm == 'true'
+      shell: bash
+      run: |
+        if ! test -e /dev/kvm; then
+          sudo modprobe kvm
+        fi
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        if test -e /dev/kvm; then
+          sudo chmod 0666 /dev/kvm
+        fi
+
+    - name: Setup Nix with OCI cache
+      uses: ./.github/actions/setup-nix-cache
+      with:
+        public-key: ${{ inputs.public-key }}
+        out-link: ${{ inputs.out-link }}
+        save: ${{ inputs.save }}
+        force: ${{ inputs.force }}
+      env:
+        GITHUB_TOKEN: ${{ github.token }}

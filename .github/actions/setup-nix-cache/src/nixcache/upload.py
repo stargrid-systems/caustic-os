@@ -7,11 +7,12 @@ import os
 import random
 import sys
 import tempfile
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from nixcache.config import err, fmt_size, info, store_hash, utc_now
+from nixcache.config import debug, err, fmt_size, info, store_hash, utc_now
 from nixcache.index import push_narinfo_manifest, update_index
 from nixcache.nar import (
     dump_nars,
@@ -43,15 +44,60 @@ def _upload_nars(
             try:
                 result = future.result()
                 uploaded.append(result)
-                info(f"  Uploaded {result['hash']} ({fmt_size(result['nar_size'])})")
+                debug(f"Uploaded {result['hash']} ({fmt_size(result['nar_size'])})")
             except (RuntimeError, OSError) as e:
-                err(f"Failed to upload NAR for {entry['hash']}: {e}")
                 failures += 1
+                debug(f"Failed to upload NAR for {entry['hash']}: {e}")
 
     if failures:
         err(f"{failures} upload(s) failed, continuing with {len(uploaded)} successful")
 
     return uploaded
+
+
+def _push_narinfo_manifests(
+    client: OCIClient,
+    entries: list[dict[str, Any]],
+    work_dir: str,
+) -> None:
+    """Push per-hash narinfo manifests in parallel, logging an aggregate summary.
+
+    Per-path detail is emitted only when Actions step debug logging is on.
+    """
+    info(f"Pushing {len(entries)} per-hash narinfo manifests ({_MAX_WORKERS} parallel)")
+
+    def push_ni(entry: dict[str, Any]) -> tuple[bool, int]:
+        return push_narinfo_manifest(
+            client,
+            entry["hash"],
+            entry["text"],
+            entry["nar_digest"],
+            work_dir,
+        )
+
+    ni_ok = 0
+    fail_by_code: Counter[int] = Counter()
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
+        futures = {pool.submit(push_ni, e): e for e in entries}
+        for future in as_completed(futures):
+            entry = futures[future]
+            try:
+                ok, code = future.result()
+            except (RuntimeError, OSError) as e:
+                ok, code = False, 0
+                debug(f"narinfo manifest push error for {entry['hash']}: {e}")
+            if ok:
+                ni_ok += 1
+            else:
+                fail_by_code[code] += 1
+                debug(f"narinfo manifest for {entry['hash']} failed (HTTP {code})")
+
+    ni_fail = sum(fail_by_code.values())
+    if ni_fail:
+        detail = ", ".join(f"HTTP {c} x{n}" for c, n in sorted(fail_by_code.items()))
+        err(f"Pushed {ni_ok}/{len(entries)} narinfo manifests ({ni_fail} failed: {detail})")
+    else:
+        info(f"Pushed {ni_ok}/{len(entries)} narinfo manifests")
 
 
 def _build_index_entries(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -147,14 +193,7 @@ def main() -> int:
     gc_roots = _resolve_gc_root(args.out_link)
     new_entries = _build_index_entries(entries)
 
-    info(f"Pushing {len(entries)} per-hash narinfo manifests")
-    ni_ok = 0
-    for entry in entries:
-        if push_narinfo_manifest(
-            client, entry["hash"], entry["text"], entry["nar_digest"], work_dir,
-        ):
-            ni_ok += 1
-    info(f"Pushed {ni_ok}/{len(entries)} narinfo manifests")
+    _push_narinfo_manifests(client, entries, work_dir)
 
     info(f"Uploaded {len(entries)} NAR(s), updating index")
     index = update_index(client, new_entries, gc_roots, public_key=public_key, work_dir=work_dir)

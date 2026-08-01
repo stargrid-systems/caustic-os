@@ -18,6 +18,7 @@ from nixcache.config import (
     MANIFEST_MEDIA_TYPE,
     REGISTRY,
     REPO,
+    debug,
     err,
     sha256_file,
 )
@@ -27,6 +28,19 @@ __all__ = ["OCIClient", "fetch_url", "open_stream"]
 _HTTP_SERVER_ERROR = 500
 _HTTP_OK = 200
 _TOKEN_TTL = 240
+_ERR_BODY_LIMIT = 300
+
+
+def _http_error_body(e: urllib.error.HTTPError) -> str:
+    """Return a truncated, best-effort body from an HTTPError for diagnostics.
+
+    GHCR puts a human-readable reason in the response body. Capturing it
+    turns opaque status codes like 405 into an actionable message.
+    """
+    try:
+        return e.read().decode("utf-8", "replace").strip()[:_ERR_BODY_LIMIT]
+    except (OSError, ValueError):
+        return ""
 
 
 def _urlopen(req: urllib.request.Request, timeout: int) -> http.client.HTTPResponse:
@@ -227,7 +241,9 @@ class OCIClient:
             try:
                 _urlopen(req, 300)
             except urllib.error.HTTPError as e:
-                msg = f"Blob upload failed (HTTP {e.code})"
+                body = _http_error_body(e)
+                suffix = f": {body}" if body else ""
+                msg = f"Blob upload failed (HTTP {e.code}){suffix}"
                 raise RuntimeError(msg) from e
             except (urllib.error.URLError, TimeoutError) as e:
                 msg = f"Blob upload failed: {e}"
@@ -253,7 +269,7 @@ class OCIClient:
             with _urlopen(req, 30) as resp:
                 return resp.headers.get("Location", "")
         except urllib.error.HTTPError as e:
-            err(f"Upload init failed (HTTP {e.code})")
+            debug(f"Upload init failed (HTTP {e.code}): {_http_error_body(e)}")
             return ""
         except (urllib.error.URLError, TimeoutError):
             return ""
@@ -277,6 +293,7 @@ class OCIClient:
             with _urlopen(req, 60) as resp:
                 return True, resp.status
         except urllib.error.HTTPError as e:
+            debug(f"manifest push {tag} failed (HTTP {e.code}): {_http_error_body(e)}")
             return False, e.code
         except (urllib.error.URLError, TimeoutError):
             return False, 0

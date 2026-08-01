@@ -28,7 +28,7 @@
     };
 
     aperture-src = {
-      url = "github:stargrid-systems/aperture/a2e9caa42d6441e2fdb2c3253db6771e8cada512";
+      url = "github:stargrid-systems/aperture/bee6a33bc5c9db04c1a01f77f28c1274810eeb2a";
       flake = false;
     };
 
@@ -47,7 +47,6 @@
       crane,
       rust-overlay,
       aperture-src,
-      nixos-hardware,
       impermanence,
       ...
     }:
@@ -59,28 +58,36 @@
       perSystem = nixpkgs.lib.genAttrs supportedSystems;
       inherit (nixpkgs) lib;
 
+      baseOverlays = [
+        rust-overlay.overlays.default
+        (_final: prev: {
+          vhost-device-vsock = prev.vhost-device-vsock.overrideAttrs (_old: {
+            doCheck = false;
+          });
+        })
+      ];
+
+      autoPatchelfOverlay = _final: prev: {
+        "auto-patchelf" = prev."auto-patchelf".overrideAttrs (old: {
+          postInstall = (old.postInstall or "") + ''
+            sed -i '1 a import sys; sys.path.insert(0, "${prev.python3Packages.pyelftools}/lib/python${prev.python3.pythonVersion}/site-packages")' \
+              $out/bin/auto-patchelf
+          '';
+        });
+      };
+
       pkgsFor =
         system:
         import nixpkgs {
           inherit system;
-          overlays = [
-            rust-overlay.overlays.default
-            (_final: prev: {
-              vhost-device-vsock = prev.vhost-device-vsock.overrideAttrs (_old: {
-                doCheck = false;
-              });
-            })
-          ]
-          ++ lib.optional (system == "aarch64-linux") (
-            _final: prev: {
-              "auto-patchelf" = prev."auto-patchelf".overrideAttrs (old: {
-                postInstall = (old.postInstall or "") + ''
-                  sed -i '1 a import sys; sys.path.insert(0, "${prev.python3Packages.pyelftools}/lib/python${prev.python3.pythonVersion}/site-packages")' \
-                    $out/bin/auto-patchelf
-                '';
-              });
-            }
-          );
+          overlays = baseOverlays ++ lib.optional (system == "aarch64-linux") autoPatchelfOverlay;
+        };
+
+      systemPkgsFor =
+        system:
+        import nixpkgs {
+          inherit system;
+          overlays = baseOverlays;
         };
 
       treefmtModule = {
@@ -117,14 +124,12 @@
         system:
         let
           craneLib = craneLibFor system;
-          crateName = craneLib.crateNameFromCargoToml {
-            cargoToml = "${aperture-src}/aperture/Cargo.toml";
-          };
+          crateName = craneLib.crateNameFromCargoToml { src = aperture-src; };
         in
         craneLib.buildPackage {
           src = aperture-src;
-          inherit (crateName) pname;
-          version = crateName.version or "0.0.1";
+          pname = "aperture";
+          inherit (crateName) version;
           strictDeps = true;
           doCheck = false;
         };
@@ -239,7 +244,7 @@
       overlays.default = osOverlay;
 
       nixosModules = {
-        cm4PoeUps = import ./hardware/cm4-poe-ups { inherit nixos-hardware; };
+        cm4PoeUps = import ./hardware/cm4-poe-ups;
         aperture = import ./modules/services/aperture.nix;
         dropbear = import ./modules/services/dropbear.nix;
         caustic = import ./modules/caustic;
@@ -298,20 +303,12 @@
         }
       );
 
-      tests = perSystem (
-        system:
-        let
-          pkgs = pkgsFor system;
-        in
-        {
-          runtime = import ./checks/runtime-test.nix {
-            inherit
-              pkgs
-              self
-              ;
-          };
-        }
-      );
+      tests = perSystem (system: {
+        runtime = import ./checks/runtime-test.nix {
+          pkgs = systemPkgsFor system;
+          inherit self;
+        };
+      });
 
       devShells = perSystem (
         system:
