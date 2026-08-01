@@ -57,7 +57,16 @@ in
         grub.enable = false;
         generic-extlinux-compatible.enable = false;
       };
-      initrd.systemd.enable = true;
+      initrd = {
+        systemd.enable = true;
+        availableKernelModules = [
+          "usbhid"
+          "usb_storage"
+          "vc4"
+          "pcie_brcmstb"
+          "reset-raspberrypi"
+        ];
+      };
       uki.settings.UKI = lib.optionalAttrs (securebootKeys != null) {
         SecureBootCertificate = securebootKeys.cert;
         SecureBootPrivateKey = securebootKeys.key;
