@@ -56,7 +56,7 @@ jobs:
               | grep -E '^[0-9]+$' \
               | sort -n \
               | tail -1
-          )
+          ) || true
 
           if [ -z "$highest" ]; then
             next=1
