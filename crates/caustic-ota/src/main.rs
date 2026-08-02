@@ -137,12 +137,9 @@ fn verify_boot_healthy() -> Result<()> {
 }
 
 fn read_current_partition() -> Result<u32> {
-    let data = fs::read(PARTITION_DT_PATH)
-        .with_context(|| format!("read {PARTITION_DT_PATH}"))?;
+    let data = fs::read(PARTITION_DT_PATH).with_context(|| format!("read {PARTITION_DT_PATH}"))?;
     if data.len() >= 4 {
-        Ok(u32::from_be_bytes([
-            data[0], data[1], data[2], data[3],
-        ]))
+        Ok(u32::from_be_bytes([data[0], data[1], data[2], data[3]]))
     } else if data.len() == 1 {
         Ok(u32::from(data[0]))
     } else if let Ok(s) = std::str::from_utf8(&data) {
@@ -180,7 +177,13 @@ fn apply_update(staging: &Path) -> Result<()> {
         2 => (1, "/dev/mmcblk0p5", "/boot/a", "cmdline-a"),
         other => bail!("unexpected active partition: {other}"),
     };
-    tracing::info!(current_part, inactive_part, usr_dev, boot_mount, "slot info");
+    tracing::info!(
+        current_part,
+        inactive_part,
+        usr_dev,
+        boot_mount,
+        "slot info"
+    );
 
     let usr_image = find_file(staging, ".usr")?;
     let boot_tar = find_file(staging, "_boot.tar")?;

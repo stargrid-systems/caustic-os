@@ -288,7 +288,7 @@ in
         {
           name = "native-rpi-builtins";
           patch = null;
-          extraStructuredConfig = with lib.kernel; {
+          structuredExtraConfig = with lib.kernel; {
             BLK_DEV_DM = yes;
             DM_VERITY = yes;
             SQUASHFS = yes;
@@ -308,7 +308,7 @@ in
         {
           name = "trim-kernel-size";
           patch = null;
-          extraStructuredConfig = with lib.kernel; {
+          structuredExtraConfig = with lib.kernel; {
             DEBUG_INFO_BTF = no;
             KALLSYMS_ALL = no;
             HAMRADIO = no;
