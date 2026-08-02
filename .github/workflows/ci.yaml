@@ -123,6 +123,11 @@ jobs:
           KERNEL=$(nix path-info .#nixosConfigurations.production.config.boot.kernelPackages.kernel)
           VERITY=$(nix path-info .#nixosConfigurations.production.config.system.build.verityArtifacts)
 
+          # Copy to temp dir because QEMU opens drives read-write
+          # and nix store files are read-only.
+          WORKDIR=$(mktemp -d)
+          cp "$KERNEL/Image" "$WORKDIR/Image"
+          cp "$VERITY/usr.bin" "$WORKDIR/usr.bin"
           source "$VERITY/verity.txt"
           SECTORS=$(( data_blocks * 8 ))
 
@@ -142,8 +147,8 @@ jobs:
             -m 512M \
             -nographic \
             -no-reboot \
-            -kernel "$KERNEL/Image" \
-            -drive file="$VERITY/usr.bin",format=raw,if=virtio \
+            -kernel "$WORKDIR/Image" \
+            -drive file="$WORKDIR/usr.bin",format=raw,if=virtio,readonly=on \
             -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA0 ignore_loglevel panic=-1 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/vda /dev/vda 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt\"" \
             > qemu-output.log 2>&1 || true
 
