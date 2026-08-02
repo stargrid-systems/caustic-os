@@ -72,8 +72,8 @@ let
         HIBERNATION = lib.mkForce no;
       };
     }).overrideAttrs
-      (old: {
-        postInstall = lib.replaceStrings [ "unlink " ] [ "rm -f " ] (old.postInstall or "");
+      (_old: {
+        postInstall = "";
       })
   );
 
