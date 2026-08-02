@@ -74,6 +74,7 @@ jobs:
           fi
           nix build \
             --keep-going \
+            -L \
             "${extra[@]}" \
             ${{ inputs.target }} \
             --out-link result
