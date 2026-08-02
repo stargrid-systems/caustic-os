@@ -78,6 +78,7 @@ let
         dataBlocks=$(( (sqfsSize + 4095) / 4096 ))
         paddedSize=$(( dataBlocks * 4096 ))
         cp ${rootSquashfs} $out/usr.bin
+        chmod 644 $out/usr.bin
         if [ $sqfsSize -ne $paddedSize ]; then
           truncate -s $paddedSize $out/usr.bin
         fi
@@ -284,7 +285,28 @@ in
         "systemd.log_level=info"
       ];
 
-      kernelPatches = [ ];
+      kernelPatches = [
+        {
+          name = "native-rpi-builtins";
+          patch = null;
+          extraConfig = ''
+            BLK_DEV_DM? y
+            DM_VERITY? y
+            SQUASHFS? y
+            SQUASHFS_ZSTD? y
+            EXT4_FS? y
+            OVERLAY_FS? y
+            MMC? y
+            MMC_BLOCK? y
+            MMC_SDHCI? y
+            MMC_SDHCI_IPROC? y
+            MMC_SDHCI_OF_ARASAN? y
+            CRYPTO_SHA256? y
+            ZSTD_COMPRESS? y
+            ZSTD_DECOMPRESS? y
+          '';
+        }
+      ];
     };
 
     fileSystems = {
