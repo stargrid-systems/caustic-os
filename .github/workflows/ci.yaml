@@ -149,9 +149,11 @@ jobs:
             -no-reboot \
             -kernel "$WORKDIR/Image" \
             -drive file="$WORKDIR/usr.bin",format=raw,if=virtio,readonly=on \
-            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA0 ignore_loglevel panic=-1 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/vda /dev/vda 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt\"" \
+            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA0 ignore_loglevel panic=-1 dm_mod.debug=y dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/vda /dev/vda 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt\"" \
             > qemu-output.log 2>&1 || true
 
+          echo "=== QEMU output (first 50 lines) ==="
+          head -50 qemu-output.log
           echo "=== QEMU output (last 100 lines) ==="
           tail -100 qemu-output.log
 
