@@ -284,40 +284,7 @@ in
         "systemd.log_level=info"
       ];
 
-      kernelPatches = [
-        {
-          name = "native-rpi-builtins";
-          patch = null;
-          extraConfig = ''
-            BLK_DEV_DM? y
-            DM_VERITY? y
-            SQUASHFS? y
-            SQUASHFS_ZSTD? y
-            EXT4_FS? y
-            OVERLAY_FS? y
-            MMC? y
-            MMC_BLOCK? y
-            MMC_SDHCI? y
-            MMC_SDHCI_IPROC? y
-            MMC_SDHCI_OF_ARASAN? y
-            CRYPTO_SHA256? y
-            ZSTD_COMPRESS? y
-            ZSTD_DECOMPRESS? y
-          '';
-        }
-        {
-          name = "trim-kernel-size";
-          patch = null;
-          extraConfig = ''
-            DEBUG_INFO_BTF? n
-            KALLSYMS_ALL? n
-            HAMRADIO? n
-            SOUND? n
-            WIRELESS? n
-            STAGING? n
-          '';
-        }
-      ];
+      kernelPatches = [ ];
     };
 
     fileSystems = {
