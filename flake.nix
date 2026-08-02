@@ -155,7 +155,7 @@
           };
         });
 
-      osOverlay = final: prev: {
+      osOverlay = final: _prev: {
         aperture = apertureFor final.stdenv.hostPlatform.system;
         caustic-ota = causticOtaFor final.stdenv.hostPlatform.system;
       };

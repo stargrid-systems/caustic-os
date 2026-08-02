@@ -2,7 +2,6 @@
   lib,
   config,
   pkgs,
-  securebootKeys ? null,
   imageId ? "caustic-os",
   otaRegistry ? "ghcr.io/stargrid-systems/caustic-os",
   ...
