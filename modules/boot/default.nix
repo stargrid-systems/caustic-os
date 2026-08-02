@@ -16,13 +16,19 @@ let
   allKernelParams = lib.concatStringsSep " " config.boot.kernelParams;
 
   initScript = pkgs.writeShellScript "nixos-init" ''
+    echo "caustic-init: mounting /run"
     ${pkgs.util-linux}/bin/mount -t tmpfs tmpfs /run
+    echo "caustic-init: linking current-system"
     ln -sf ${toplevel} /run/current-system
+    echo "caustic-init: starting systemd"
     exec ${toplevel}/sw/lib/systemd/systemd
   '';
 
   closureInfo = pkgs.buildPackages.closureInfo {
-    rootPaths = [ toplevel ];
+    rootPaths = [
+      toplevel
+      initScript
+    ];
   };
 
   rootSquashfs =
@@ -274,6 +280,7 @@ in
         "console=tty1"
         "earlycon=pl011,mmio32,0xfe201000"
         "ignore_loglevel"
+        "panic=-1"
         "systemd.show_status=1"
         "systemd.log_level=info"
       ];
