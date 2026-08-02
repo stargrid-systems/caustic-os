@@ -1,7 +1,3 @@
-mod command;
-mod slot;
-mod state;
-
 use std::fs;
 use std::path::Path;
 
@@ -9,10 +5,16 @@ use anyhow::{Context, Result, anyhow};
 use caustic_oci::OciImageManifest;
 use clap::{Parser, Subcommand};
 
-use crate::command::capture_stdout;
+use self::systemctl::SystemState;
+
+mod dd;
+mod reboot;
+mod slot;
+mod state;
+mod systemctl;
+mod tar;
 
 const STAGING_DIR: &str = "/var/lib/caustic-ota/staging";
-const SYSTEMCTL_BIN: &str = "/run/current-system/sw/bin/systemctl";
 const FACTORY_RESET_SENTINEL: &str = "/persist/.factory-reset";
 
 #[derive(Parser)]
@@ -39,6 +41,7 @@ enum Commands {
         force: bool,
     },
     FactoryReset,
+    Commit,
 }
 
 #[tokio::main]
@@ -61,6 +64,7 @@ async fn main() -> Result<()> {
             force,
         } => update(&registry, &tag, force, token.as_deref()).await,
         Commands::FactoryReset => factory_reset(),
+        Commands::Commit => commit(),
     }
 }
 
@@ -106,23 +110,42 @@ async fn update(registry: &str, tag: &str, force: bool, token: Option<&str>) -> 
     tracing::info!("applying update to inactive slot");
     slot::apply_update(staging).context("apply update")?;
 
-    state::State {
-        current_version: version.clone(),
-    }
-    .write()?;
     tracing::info!(%version, "update staged, tryboot reboot pending");
-    slot::trigger_tryboot()?;
+    reboot::tryboot().context("trigger tryboot")?;
     Ok(())
 }
 
 fn verify_boot_healthy() -> Result<()> {
-    let status = capture_stdout(SYSTEMCTL_BIN, ["is-system-running"])?;
-    match status.as_str() {
-        "running" | "degraded" => Ok(()),
+    let state = systemctl::is_system_running()?;
+    match state {
+        SystemState::Running | SystemState::Degraded => Ok(()),
         other => Err(anyhow!(
-            "current boot is unhealthy ({other}); refusing to update (use --force to override)"
+            "current boot is unhealthy ({other:?}); refusing to update (use --force to override)"
         )),
     }
+}
+
+fn commit() -> Result<()> {
+    let version = read_running_version()?;
+    tracing::info!(%version, "committing running version to state");
+    state::State {
+        current_version: version,
+    }
+    .write()?;
+    Ok(())
+}
+
+fn read_running_version() -> Result<String> {
+    let content = fs::read_to_string("/etc/os-release")
+        .or_else(|_| fs::read_to_string("/usr/lib/os-release"))
+        .context("read os-release")?;
+    content
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("VERSION_ID=")
+                .map(|v| v.trim_matches('"').to_string())
+        })
+        .ok_or_else(|| anyhow!("VERSION_ID not found in os-release"))
 }
 
 fn factory_reset() -> Result<()> {

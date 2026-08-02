@@ -29,9 +29,14 @@ in
           Type = "oneshot";
           RemainAfterExit = true;
         };
-        path = [ pkgs.util-linux ];
+        path = [
+          pkgs.util-linux
+          pkgs.caustic-ota
+        ];
         script = ''
           set -euo pipefail
+
+          caustic-ota commit
 
           isTryboot=$(cat /proc/device-tree/chosen/bootloader/tryboot 2>/dev/null | tr -d '\0' || echo "")
           if [ "$isTryboot" != "1" ]; then
@@ -54,6 +59,19 @@ in
           curDefault=$(awk -F= '/^boot_partition=/ {print $2}' "$autoboot" | head -1)
           tryDefault=$(sed -n '/^\[tryboot\]/,/^\[/p' "$autoboot" | awk -F= '/^boot_partition=/ {print $2}' | head -1)
 
+          if [ "$curDefault" != "1" ] && [ "$curDefault" != "2" ]; then
+            echo "mark-slot-good: invalid current boot_partition: '$curDefault'"
+            umount "$mnt"
+            rmdir "$mnt"
+            exit 1
+          fi
+          if [ "$tryDefault" != "1" ] && [ "$tryDefault" != "2" ]; then
+            echo "mark-slot-good: invalid tryboot boot_partition: '$tryDefault'"
+            umount "$mnt"
+            rmdir "$mnt"
+            exit 1
+          fi
+
           tmp=$(mktemp)
           printf '[all]\ntryboot_a_b=1\nboot_partition=%s\n[tryboot]\nboot_partition=%s\n' \
             "$tryDefault" "$curDefault" > "$tmp"
@@ -67,6 +85,7 @@ in
 
       factory-reset = {
         description = "Factory reset on sentinel";
+        wantedBy = [ "multi-user.target" ];
         after = [ "persist.mount" ];
         before = [ "multi-user.target" ];
         requires = [ "persist.mount" ];
@@ -84,7 +103,7 @@ in
           sentinelName=$(basename ${slotCfg.factoryResetSentinel})
           echo "factory-reset: wiping $persistDir"
           find "$persistDir" -mindepth 1 ! -name "$sentinelName" \
-            -exec rm -rf {} + 2>/dev/null || true
+            -exec rm -rf {} +
           rm -f ${slotCfg.factoryResetSentinel}
           echo "factory-reset: complete, rebooting"
           systemctl reboot

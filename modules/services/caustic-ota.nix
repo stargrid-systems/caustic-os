@@ -37,6 +37,14 @@ in
       description = "Caustic OS OTA update check";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
+      unitConfig = {
+        RequiresMountsFor = [
+          "/var/lib/caustic-ota"
+          "/persist"
+          "/boot/a"
+          "/boot/b"
+        ];
+      };
       serviceConfig = {
         Type = "oneshot";
         ExecStart = "${lib.getExe cfg.package} update --registry ${cfg.registry} --tag ${cfg.tag}";

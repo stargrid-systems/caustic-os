@@ -251,12 +251,6 @@ in
   options.boot.native-rpi = {
     enable = lib.mkEnableOption "native Raspberry Pi boot (no UEFI, no initramfs)";
 
-    extraKernelParams = lib.mkOption {
-      type = with lib.types; listOf str;
-      default = [ ];
-      description = "Extra kernel parameters appended to the boot cmdline.";
-    };
-
     secureBootKey = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = if securebootKeys != null then securebootKeys.key else null;

@@ -26,7 +26,7 @@ impl State {
     pub fn write(&self) -> Result<()> {
         let path = Path::new(STATE_FILE);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).ok();
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
         }
         let bytes = serde_json::to_vec_pretty(self)?;
         fs::write(path, bytes).context("write state")

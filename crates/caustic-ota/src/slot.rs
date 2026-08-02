@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 
-use crate::command;
+use crate::dd::write_image;
+use crate::tar::extract;
 
 const PARTITION_DT_PATH: &str = "/proc/device-tree/chosen/bootloader/partition";
 const BOOT_EXTRACT_DIR: &str = "/var/lib/caustic-ota/boot-extract";
@@ -15,20 +16,24 @@ struct InactiveSlot {
     cmdline_prefix: &'static str,
 }
 
-fn inactive_slot(current: u32) -> Result<InactiveSlot> {
+const SLOT_B: InactiveSlot = InactiveSlot {
+    number: 2,
+    usr_dev: "/dev/mmcblk0p6",
+    boot_mount: "/boot/b",
+    cmdline_prefix: "cmdline-b",
+};
+
+const SLOT_A: InactiveSlot = InactiveSlot {
+    number: 1,
+    usr_dev: "/dev/mmcblk0p5",
+    boot_mount: "/boot/a",
+    cmdline_prefix: "cmdline-a",
+};
+
+fn inactive_slot(current: u32) -> Result<&'static InactiveSlot> {
     match current {
-        1 => Ok(InactiveSlot {
-            number: 2,
-            usr_dev: "/dev/mmcblk0p6",
-            boot_mount: "/boot/b",
-            cmdline_prefix: "cmdline-b",
-        }),
-        2 => Ok(InactiveSlot {
-            number: 1,
-            usr_dev: "/dev/mmcblk0p5",
-            boot_mount: "/boot/a",
-            cmdline_prefix: "cmdline-a",
-        }),
+        1 => Ok(&SLOT_B),
+        2 => Ok(&SLOT_A),
         other => bail!("unexpected active partition: {other}"),
     }
 }
@@ -85,40 +90,22 @@ pub fn apply_update(staging: &Path) -> Result<()> {
         fs::remove_dir_all(boot_dir)?;
     }
     fs::create_dir_all(boot_dir)?;
-    let boot_tar_s = boot_tar.to_string_lossy();
-    let boot_dir_s = boot_dir.to_string_lossy();
-    command::run("tar", ["-xf", &*boot_tar_s, "-C", &*boot_dir_s])?;
+    extract(&boot_tar, boot_dir)?;
 
     let cmdline_src = boot_dir.join(format!("{}.txt", slot.cmdline_prefix));
 
     tracing::info!(usr = %usr_image.display(), "writing usr partition");
-    let if_arg = format!("if={}", usr_image.display());
-    let of_arg = format!("of={}", slot.usr_dev);
-    command::run(
-        "dd",
-        [if_arg.as_str(), of_arg.as_str(), "bs=128M", "conv=fsync"],
-    )?;
+    write_image(&usr_image, slot.usr_dev)?;
 
     tracing::info!(slot.boot_mount, "writing boot files");
-    if !Path::new(slot.boot_mount).is_dir() {
+    if !Path::new(slot.boot_mount).join("config.txt").exists() {
         bail!(
-            "boot mount {} is not a directory or not mounted",
+            "boot partition not mounted at {} (config.txt not found)",
             slot.boot_mount
         );
     }
 
-    for entry in fs::read_dir(boot_dir)? {
-        let src = entry?.path();
-        let name = src.file_name().context("get filename")?;
-        if name.to_str().is_some_and(|n| n.starts_with("cmdline-")) {
-            continue;
-        }
-        let dst = Path::new(slot.boot_mount).join(name);
-        let src_s = src.to_string_lossy();
-        let dst_s = dst.to_string_lossy();
-        command::run("cp", ["-f", "-L", &*src_s, &*dst_s])
-            .with_context(|| format!("copy {}", src.display()))?;
-    }
+    copy_boot_files(boot_dir, Path::new(slot.boot_mount), true)?;
 
     tracing::info!(src = %cmdline_src.display(), "writing cmdline.txt");
     fs::copy(&cmdline_src, Path::new(slot.boot_mount).join("cmdline.txt"))
@@ -131,7 +118,20 @@ pub fn apply_update(staging: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn trigger_tryboot() -> Result<()> {
-    tracing::info!("triggering tryboot reboot");
-    command::run("reboot", ["0 tryboot"])
+fn copy_boot_files(src: &Path, dst: &Path, skip_cmdline: bool) -> Result<()> {
+    for entry in fs::read_dir(src)? {
+        let path = entry?.path();
+        let name = path.file_name().context("get filename")?;
+        if skip_cmdline && name.to_str().is_some_and(|n| n.starts_with("cmdline-")) {
+            continue;
+        }
+        let target = dst.join(name);
+        if path.is_dir() {
+            fs::create_dir_all(&target)?;
+            copy_boot_files(&path, &target, false)?;
+        } else {
+            fs::copy(&path, &target).with_context(|| format!("copy {}", path.display()))?;
+        }
+    }
+    Ok(())
 }
