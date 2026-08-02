@@ -186,6 +186,7 @@
           };
           modules = [
             { nixpkgs.overlays = [ osOverlay ]; }
+            self.nixosModules.kernel
             self.nixosModules.nativeBoot
             self.nixosModules.cm4PoeUps
             self.nixosModules.aperture
@@ -234,6 +235,7 @@
         causticOta = import ./modules/services/caustic-ota.nix;
         persist = import ./modules/persist { inherit impermanence; };
         nativeBoot = import ./modules/boot/default.nix;
+        kernel = import ./modules/kernel/default.nix;
       };
 
       nixosConfigurations = {
