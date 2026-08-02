@@ -309,12 +309,12 @@ in
           name = "trim-kernel-size";
           patch = null;
           structuredExtraConfig = with lib.kernel; {
-            DEBUG_INFO_BTF = no;
-            KALLSYMS_ALL = no;
-            HAMRADIO = no;
-            SOUND = no;
-            WIRELESS = no;
-            STAGING = no;
+            DEBUG_INFO_BTF = lib.mkForce no;
+            KALLSYMS_ALL = lib.mkForce no;
+            HAMRADIO = lib.mkForce no;
+            SOUND = lib.mkForce no;
+            WIRELESS = lib.mkForce no;
+            STAGING = lib.mkForce no;
           };
         }
       ];
