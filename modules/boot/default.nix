@@ -59,7 +59,7 @@ let
         ln -sf ${initScript} $rootDir/init
 
         SOURCE_DATE_EPOCH=0 mksquashfs $rootDir $out \
-          -all-root -no-hardlinks -keep-as-directory \
+          -all-root -no-hardlinks \
           -b 1048576 -comp zstd -Xcompression-level 6 \
           -processors $NIX_BUILD_CORES -root-mode 0755 -noappend
       '';
