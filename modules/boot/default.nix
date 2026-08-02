@@ -15,15 +15,66 @@ let
 
   allKernelParams = lib.concatStringsSep " " config.boot.kernelParams;
 
+  customKernelPackages = pkgs.linuxKernel.packagesFor (
+    pkgs.linux_6_12.override {
+      ignoreConfigErrors = true;
+      structuredExtraConfig = with lib.kernel; {
+        MODULES = lib.mkForce no;
+
+        BLK_DEV_DM = lib.mkForce yes;
+        DM_VERITY = lib.mkForce yes;
+        SQUASHFS = lib.mkForce yes;
+        SQUASHFS_ZSTD = lib.mkForce yes;
+        EXT4_FS = lib.mkForce yes;
+
+        DEVTMPFS = lib.mkForce yes;
+        DEVTMPFS_MOUNT = lib.mkForce yes;
+
+        CRYPTO_SHA256 = lib.mkForce yes;
+        ZSTD_COMPRESS = lib.mkForce yes;
+        ZSTD_DECOMPRESS = lib.mkForce yes;
+
+        MMC = lib.mkForce yes;
+        MMC_BLOCK = lib.mkForce yes;
+
+        SERIAL_AMBA_PL011 = lib.mkForce yes;
+        SERIAL_AMBA_PL011_CONSOLE = lib.mkForce yes;
+        SERIAL_EARLYCON = lib.mkForce yes;
+
+        RASPBERRYPI_FIRMWARE = lib.mkForce yes;
+        BCM2835_MBOX = lib.mkForce yes;
+        BCM2835_WDT = lib.mkForce yes;
+        WATCHDOG = lib.mkForce yes;
+        WATCHDOG_NOWAYOUT = lib.mkForce yes;
+
+        NET_VENDOR_BROADCOM = lib.mkForce yes;
+        BCMGENET = lib.mkForce yes;
+
+        CGROUPS = lib.mkForce yes;
+        BPF_SYSCALL = lib.mkForce yes;
+        SECCOMP = lib.mkForce yes;
+        SECCOMP_FILTER = lib.mkForce yes;
+        INOTIFY_USER = lib.mkForce yes;
+        SIGNALFD = lib.mkForce yes;
+        TIMERFD = lib.mkForce yes;
+        EPOLL = lib.mkForce yes;
+        FHANDLE = lib.mkForce yes;
+
+        SOUND = lib.mkForce no;
+        SND = lib.mkForce no;
+        MEDIA_SUPPORT = lib.mkForce no;
+        DRM = lib.mkForce no;
+        WIRELESS = lib.mkForce no;
+        CFG80211 = lib.mkForce no;
+        STAGING = lib.mkForce no;
+        KEXEC = lib.mkForce no;
+        HIBERNATION = lib.mkForce no;
+      };
+    }
+  );
+
   initScript = pkgs.writeShellScript "nixos-init" ''
-    ${pkgs.util-linux}/bin/mount -t proc proc /proc
-    ${pkgs.util-linux}/bin/mount -t sysfs sysfs /sys
-    ${pkgs.util-linux}/bin/mount -t devtmpfs devtmpfs /dev
     ${pkgs.util-linux}/bin/mount -t tmpfs tmpfs /run
-    ${pkgs.util-linux}/bin/mount -t tmpfs tmpfs /tmp
-    mkdir -p /dev/shm
-    ${pkgs.util-linux}/bin/mount -t tmpfs -o mode=1777 tmpfs /dev/shm
-    ${pkgs.util-linux}/bin/mount -t configfs configfs /sys/kernel/config 2>/dev/null || true
     ln -sf ${toplevel} /run/current-system
     exec ${toplevel}/sw/lib/systemd/systemd
   '';
@@ -143,7 +194,7 @@ let
             dev=/dev/mmcblk0p6
           fi
           printf '%s\n' \
-            "root=/dev/dm-0 rootfstype=squashfs ro init=${initScript} dm-mod.create=\"vroot,,0,ro,0 ''${sectors} verity 1 ''${dev} ''${dev} 4096 4096 ''${data_blocks} ''${data_blocks} sha256 ''${root_hash} ''${salt}\" ${allKernelParams}" \
+            "root=/dev/dm-0 rootfstype=squashfs ro init=${initScript} dm-mod.create=\"vroot,,0,ro,0 ''${sectors} verity 1 ''${dev} ''${dev} 4096 4096 ''${data_blocks} ''${data_blocks} sha256 ''${root_hash} ''${salt} restart_on_corruption\" ${allKernelParams}" \
             > "$out/cmdline-$slot.txt"
         done
       '';
@@ -267,6 +318,9 @@ in
 
   config = lib.mkIf cfg.enable {
     boot = {
+      kernelPackages = lib.mkDefault customKernelPackages;
+      kernelModules = lib.mkForce [ ];
+
       loader = {
         grub.enable = false;
         generic-extlinux-compatible.enable = false;
@@ -284,8 +338,11 @@ in
         "systemd.show_status=1"
         "systemd.log_level=info"
       ];
+    };
 
-      kernelPatches = [ ];
+    systemd.settings.Manager = {
+      RuntimeWatchdogSec = "10s";
+      ShutdownWatchdogSec = "10min";
     };
 
     fileSystems = {

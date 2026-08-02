@@ -30,12 +30,9 @@ in
 
     services.caustic-ota.registry = lib.mkDefault otaRegistry;
 
-    boot = {
-      kernelPackages = pkgs.linuxPackages_6_12;
-      native-rpi = {
-        enable = true;
-        slot.enable = true;
-      };
+    boot.native-rpi = {
+      enable = true;
+      slot.enable = true;
     };
 
     hardware.deviceTree.enable = true;
