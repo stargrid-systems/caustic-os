@@ -71,7 +71,7 @@ jobs:
   runtime-test:
     name: Runtime test (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    if: github.event_name == 'merge_group'
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
