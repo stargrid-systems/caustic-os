@@ -82,7 +82,7 @@ let
           truncate -s $paddedSize $out/usr.bin
         fi
 
-        output=$(veritysetup format $out/usr.bin $out/hash.bin)
+        output=$(veritysetup format --no-superblock $out/usr.bin $out/hash.bin)
         rootHash=$(echo "$output" | grep '^Root hash:' | awk '{print $3}')
         salt=$(echo "$output" | grep '^Salt:' | awk '{print $2}')
 

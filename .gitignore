@@ -1,7 +1,4 @@
 /result*
 /secrets
 target/
-target-distrobox/
-formatter-result
 .pre-commit-config.yaml
-.config

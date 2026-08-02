@@ -6,9 +6,6 @@ let
   inherit (pkgs) lib;
   inherit (pkgs.stdenv.hostPlatform) system;
 
-  # Force the real dev/prod systems to build on aarch64 so
-  # kernel/initrd/module regressions fail CI instead of surfacing
-  # only at flash time.
   realImageBuilds = lib.optionals (system == "aarch64-linux") [
     self.nixosConfigurations.devImage.config.system.build.toplevel
     self.nixosConfigurations.production.config.system.build.toplevel
@@ -35,10 +32,6 @@ pkgs.testers.runNixOSTest {
         persist.enable = true;
       };
 
-      # On aarch64, use the production/devImage kernel so the test
-      # exercises the real kernel the device boots. production is
-      # aarch64-only, so on other arches (where the test only covers
-      # arch-independent services) the nixpkgs default kernel is fine.
       boot.kernelPackages =
         if pkgs.stdenv.hostPlatform.isAarch64 then
           self.nixosConfigurations.production.config.boot.kernelPackages

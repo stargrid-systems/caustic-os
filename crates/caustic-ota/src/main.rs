@@ -1,18 +1,19 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+mod command;
+mod slot;
+mod state;
 
-use anyhow::{Context, Result, anyhow, bail};
-use caustic_oci::{self, OciImageManifest};
+use std::fs;
+use std::path::Path;
+
+use anyhow::{Context, Result, anyhow};
+use caustic_oci::OciImageManifest;
 use clap::{Parser, Subcommand};
-use serde::{Deserialize, Serialize};
+
+use crate::command::capture_stdout;
 
 const STAGING_DIR: &str = "/var/lib/caustic-ota/staging";
-const STATE_FILE: &str = "/var/lib/caustic-ota/state.json";
 const SYSTEMCTL_BIN: &str = "/run/current-system/sw/bin/systemctl";
 const FACTORY_RESET_SENTINEL: &str = "/persist/.factory-reset";
-
-const PARTITION_DT_PATH: &str = "/proc/device-tree/chosen/bootloader/partition";
 
 #[derive(Parser)]
 #[command(name = "caustic-ota", version, about = "Caustic OS OTA update daemon")]
@@ -38,11 +39,6 @@ enum Commands {
         force: bool,
     },
     FactoryReset,
-}
-
-#[derive(Serialize, Deserialize)]
-struct State {
-    current_version: String,
 }
 
 #[tokio::main]
@@ -73,9 +69,7 @@ async fn check(registry: &str, tag: &str, token: Option<&str>) -> Result<()> {
         .await
         .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
     let version = caustic_oci::extract_version(&manifest)?;
-    let state = read_state().unwrap_or(State {
-        current_version: String::new(),
-    });
+    let state = state::State::read_or_default();
     if version == state.current_version {
         tracing::info!(%version, "already up to date");
         println!("up-to-date");
@@ -95,9 +89,7 @@ async fn update(registry: &str, tag: &str, force: bool, token: Option<&str>) -> 
         .await
         .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
     let version = caustic_oci::extract_version(&manifest)?;
-    let state = read_state().unwrap_or(State {
-        current_version: String::new(),
-    });
+    let state = state::State::read_or_default();
     if version == state.current_version {
         tracing::info!(%version, "already up to date");
         return Ok(());
@@ -112,156 +104,25 @@ async fn update(registry: &str, tag: &str, force: bool, token: Option<&str>) -> 
     caustic_oci::verify_sha256sums(staging).context("verify checksums")?;
 
     tracing::info!("applying update to inactive slot");
-    apply_update(staging).context("apply update")?;
+    slot::apply_update(staging).context("apply update")?;
 
-    write_state(&State {
+    state::State {
         current_version: version.clone(),
-    })?;
+    }
+    .write()?;
     tracing::info!(%version, "update staged, tryboot reboot pending");
-    trigger_tryboot()?;
+    slot::trigger_tryboot()?;
     Ok(())
 }
 
 fn verify_boot_healthy() -> Result<()> {
-    let output = Command::new(SYSTEMCTL_BIN)
-        .args(["is-system-running"])
-        .output()
-        .context("run systemctl is-system-running")?;
-    let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let status = capture_stdout(SYSTEMCTL_BIN, ["is-system-running"])?;
     match status.as_str() {
         "running" | "degraded" => Ok(()),
         other => Err(anyhow!(
             "current boot is unhealthy ({other}); refusing to update (use --force to override)"
         )),
     }
-}
-
-fn read_current_partition() -> Result<u32> {
-    let data = fs::read(PARTITION_DT_PATH).with_context(|| format!("read {PARTITION_DT_PATH}"))?;
-    if data.len() >= 4 {
-        Ok(u32::from_be_bytes([data[0], data[1], data[2], data[3]]))
-    } else if data.len() == 1 {
-        Ok(u32::from(data[0]))
-    } else if let Ok(s) = std::str::from_utf8(&data) {
-        s.trim()
-            .parse()
-            .with_context(|| format!("parse partition string: {s:?}"))
-    } else {
-        bail!("unexpected partition data length: {}", data.len())
-    }
-}
-
-fn find_file(staging: &Path, suffix: &str) -> Result<PathBuf> {
-    let mut found = Vec::new();
-    for entry in fs::read_dir(staging)? {
-        let path = entry?.path();
-        if path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|name| name.ends_with(suffix))
-        {
-            found.push(path);
-        }
-    }
-    match found.len() {
-        1 => Ok(found.into_iter().next().unwrap()),
-        0 => bail!("no file ending with '{suffix}' in staging dir"),
-        _ => bail!("multiple files ending with '{suffix}' in staging dir"),
-    }
-}
-
-fn apply_update(staging: &Path) -> Result<()> {
-    let current_part = read_current_partition()?;
-    let (inactive_part, usr_dev, boot_mount, cmdline_prefix) = match current_part {
-        1 => (2u32, "/dev/mmcblk0p6", "/boot/b", "cmdline-b"),
-        2 => (1, "/dev/mmcblk0p5", "/boot/a", "cmdline-a"),
-        other => bail!("unexpected active partition: {other}"),
-    };
-    tracing::info!(
-        current_part,
-        inactive_part,
-        usr_dev,
-        boot_mount,
-        "slot info"
-    );
-
-    let usr_image = find_file(staging, ".usr")?;
-    let boot_tar = find_file(staging, "_boot.tar")?;
-
-    let boot_dir = Path::new("/var/lib/caustic-ota/boot-extract");
-    if boot_dir.exists() {
-        fs::remove_dir_all(boot_dir)?;
-    }
-    fs::create_dir_all(boot_dir)?;
-    let status = Command::new("tar")
-        .args(["-xf"])
-        .arg(&boot_tar)
-        .args(["-C"])
-        .arg(boot_dir)
-        .status()
-        .context("extract boot tar")?;
-    if !status.success() {
-        bail!("tar extract failed with status {status:?}");
-    }
-
-    let cmdline_src = boot_dir.join(format!("{cmdline_prefix}.txt"));
-
-    tracing::info!(usr = %usr_image.display(), "writing usr partition");
-    let status = Command::new("dd")
-        .args([
-            "if=".to_string() + &usr_image.to_string_lossy(),
-            "of=".to_string() + usr_dev,
-            "bs=128M".to_string(),
-            "conv=fsync".to_string(),
-        ])
-        .status()
-        .context("run dd")?;
-    if !status.success() {
-        bail!("dd failed with status {status:?}");
-    }
-
-    tracing::info!(boot_mount, "writing boot files");
-    if !Path::new(boot_mount).is_dir() {
-        bail!("boot mount {boot_mount} is not a directory or not mounted");
-    }
-
-    let entries = fs::read_dir(boot_dir).context("read boot dir")?;
-    for entry in entries {
-        let src = entry?.path();
-        let name = src.file_name().context("get filename")?;
-        if name.to_str().is_some_and(|n| n.starts_with("cmdline-")) {
-            continue;
-        }
-        let dst = Path::new(boot_mount).join(name);
-        let status = Command::new("cp")
-            .args(["-f", "-L"])
-            .arg(&src)
-            .arg(&dst)
-            .status()
-            .with_context(|| format!("copy {}", src.display()))?;
-        if !status.success() {
-            bail!("cp {} failed", src.display());
-        }
-    }
-
-    tracing::info!(src = %cmdline_src.display(), "writing cmdline.txt");
-    fs::copy(&cmdline_src, Path::new(boot_mount).join("cmdline.txt"))
-        .context("copy cmdline.txt")?;
-
-    tracing::info!(inactive_part, "update applied to inactive slot");
-    Ok(())
-}
-
-fn trigger_tryboot() -> Result<()> {
-    tracing::info!("triggering tryboot reboot");
-    let status = Command::new("reboot")
-        .arg("0 tryboot")
-        .status()
-        .context("run reboot tryboot")?;
-    if !status.success() {
-        bail!("reboot tryboot failed with status {status:?}");
-    }
-    Ok(())
 }
 
 fn factory_reset() -> Result<()> {
@@ -314,18 +175,4 @@ fn clear_dir(dir: &Path) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn read_state() -> Result<State> {
-    let bytes = fs::read(STATE_FILE).context("read state")?;
-    serde_json::from_slice(&bytes).context("parse state")
-}
-
-fn write_state(state: &State) -> Result<()> {
-    let path = PathBuf::from(STATE_FILE);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).ok();
-    }
-    let bytes = serde_json::to_vec_pretty(state)?;
-    fs::write(path, bytes).context("write state")
 }
