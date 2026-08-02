@@ -45,12 +45,12 @@ in
         ReadWritePaths = [
           "/var/lib/caustic-ota"
           "/persist"
-          "/boot/EFI/Linux"
+          "/boot/a"
+          "/boot/b"
         ];
         CapabilityBoundingSet = "";
         NoNewPrivileges = true;
         PrivateTmp = true;
-        PrivateDevices = true;
       };
     };
 

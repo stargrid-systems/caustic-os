@@ -158,15 +158,6 @@
       osOverlay = final: prev: {
         aperture = apertureFor final.stdenv.hostPlatform.system;
         caustic-ota = causticOtaFor final.stdenv.hostPlatform.system;
-
-        # nixpkgs wraps ukify with binutils in PATH but not sbsigntool.
-        # ukify needs sbsign/sbverify when SecureBootPrivateKey is set, and
-        # its wrapper overrides PATH, so nativeBuildInputs in callers don't help.
-        systemdUkify = prev.systemdUkify.overrideAttrs (old: {
-          postFixup = (old.postFixup or "") + ''
-            wrapProgram $out/bin/ukify --prefix PATH : ${lib.makeBinPath [ final.sbsigntool ]}
-          '';
-        });
       };
 
       devNixosFor =
@@ -194,15 +185,8 @@
             inherit securebootKeys imageId otaRegistry;
           };
           modules = [
-            ({ modulesPath, ... }: {
-              imports = [
-                "${modulesPath}/image/repart.nix"
-                "${modulesPath}/image/repart-verity-store.nix"
-                "${modulesPath}/system/boot/uki.nix"
-                "${modulesPath}/system/boot/systemd/sysupdate.nix"
-              ];
-            })
             { nixpkgs.overlays = [ osOverlay ]; }
+            self.nixosModules.nativeBoot
             self.nixosModules.cm4PoeUps
             self.nixosModules.aperture
             self.nixosModules.dropbear
@@ -210,7 +194,6 @@
             self.nixosModules.causticOta
             self.nixosModules.persist
             ./systems/production/default.nix
-            ./systems/production/updates.nix
           ];
         };
 
@@ -250,6 +233,7 @@
         caustic = import ./modules/caustic;
         causticOta = import ./modules/services/caustic-ota.nix;
         persist = import ./modules/persist { inherit impermanence; };
+        nativeBoot = import ./modules/boot/default.nix;
       };
 
       nixosConfigurations = {
