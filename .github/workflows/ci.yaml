@@ -71,7 +71,7 @@ jobs:
   runtime-test:
     name: Runtime test (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    if: github.event_name == 'merge_group'
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -97,11 +97,78 @@ jobs:
       - name: Run runtime test
         run: nix build .#tests.${{ matrix.nix_system }}.runtime -L
 
+  boot-test:
+    name: Boot test (QEMU)
+    runs-on: ubuntu-26.04-arm
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Nix with OCI cache
+        uses: ./.github/actions/setup-nix-cache
+        with:
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+
+      - name: Build kernel and verity artifacts
+        run: |
+          nix build --no-link \
+            .#nixosConfigurations.production.config.boot.kernelPackages.kernel \
+            .#nixosConfigurations.production.config.system.build.verityArtifacts
+
+      - name: QEMU boot test
+        run: |
+          KERNEL=$(nix path-info .#nixosConfigurations.production.config.boot.kernelPackages.kernel)
+          VERITY=$(nix path-info .#nixosConfigurations.production.config.system.build.verityArtifacts)
+
+          # Copy to temp dir because QEMU opens drives read-write
+          # and nix store files are read-only.
+          WORKDIR=$(mktemp -d)
+          cp "$KERNEL/Image" "$WORKDIR/Image"
+          cp "$VERITY/usr.bin" "$WORKDIR/usr.bin"
+          source "$VERITY/verity.txt"
+          SECTORS=$(( data_blocks * 8 ))
+
+          QEMU=$(nix build --no-link --print-out-paths nixpkgs#qemu)/bin/qemu-system-aarch64
+
+          ACCEL="-cpu cortex-a72"
+          if [ -e /dev/kvm ]; then
+            ACCEL="-enable-kvm -cpu host"
+          fi
+
+          echo "=== QEMU boot test ==="
+          echo "data_blocks=$data_blocks sectors=$SECTORS"
+
+          timeout 600 "$QEMU" \
+            -machine virt \
+            $ACCEL \
+            -m 512M \
+            -nographic \
+            -no-reboot \
+            -kernel "$WORKDIR/Image" \
+            -drive file="$WORKDIR/usr.bin",format=raw,if=virtio,readonly=on \
+            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA0 ignore_loglevel panic=-1 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/vda /dev/vda 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt\"" \
+            > qemu-output.log 2>&1 || true
+
+          echo "=== QEMU output (first 50 lines) ==="
+          head -50 qemu-output.log
+          echo "=== QEMU output (last 100 lines) ==="
+          tail -100 qemu-output.log
+
+          if grep -q "caustic-init: starting systemd" qemu-output.log; then
+            echo "::notice::QEMU boot test PASSED"
+          else
+            echo "::error::QEMU boot test FAILED"
+            exit 1
+          fi
+
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-slim
     if: always()
-    needs: [quick-checks, rust, build-images, runtime-test]
+    needs: [quick-checks, rust, build-images, runtime-test, boot-test]
     steps:
       - name: Evaluate job results
         env:
@@ -109,8 +176,9 @@ jobs:
           RUST: ${{ needs.rust.result }}
           BUILD_IMAGES: ${{ needs.build-images.result }}
           RUNTIME_TEST: ${{ needs.runtime-test.result }}
+          BOOT_TEST: ${{ needs.boot-test.result }}
         run: |
-          for name in QUICK_CHECKS RUST BUILD_IMAGES RUNTIME_TEST; do
+          for name in QUICK_CHECKS RUST BUILD_IMAGES RUNTIME_TEST BOOT_TEST; do
             result="${!name}"
             echo "$name: $result"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then

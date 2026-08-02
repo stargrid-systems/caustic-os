@@ -1,16 +1,20 @@
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
-use caustic_oci::{self, OciImageManifest};
+use caustic_oci::OciImageManifest;
 use clap::{Parser, Subcommand};
-use serde::{Deserialize, Serialize};
+
+use self::systemctl::SystemState;
+
+mod dd;
+mod reboot;
+mod slot;
+mod state;
+mod systemctl;
+mod tar;
 
 const STAGING_DIR: &str = "/var/lib/caustic-ota/staging";
-const STATE_FILE: &str = "/var/lib/caustic-ota/state.json";
-const SYSUPDATE_BIN: &str = "/run/current-system/sw/bin/systemd-sysupdate";
-const SYSTEMCTL_BIN: &str = "/run/current-system/sw/bin/systemctl";
 const FACTORY_RESET_SENTINEL: &str = "/persist/.factory-reset";
 
 #[derive(Parser)]
@@ -37,11 +41,7 @@ enum Commands {
         force: bool,
     },
     FactoryReset,
-}
-
-#[derive(Serialize, Deserialize)]
-struct State {
-    current_version: String,
+    Commit,
 }
 
 #[tokio::main]
@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
             force,
         } => update(&registry, &tag, force, token.as_deref()).await,
         Commands::FactoryReset => factory_reset(),
+        Commands::Commit => commit(),
     }
 }
 
@@ -72,9 +73,7 @@ async fn check(registry: &str, tag: &str, token: Option<&str>) -> Result<()> {
         .await
         .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
     let version = caustic_oci::extract_version(&manifest)?;
-    let state = read_state().unwrap_or(State {
-        current_version: String::new(),
-    });
+    let state = state::State::read_or_default();
     if version == state.current_version {
         tracing::info!(%version, "already up to date");
         println!("up-to-date");
@@ -94,9 +93,7 @@ async fn update(registry: &str, tag: &str, force: bool, token: Option<&str>) -> 
         .await
         .with_context(|| format!("pull manifest from {registry}:{tag}"))?;
     let version = caustic_oci::extract_version(&manifest)?;
-    let state = read_state().unwrap_or(State {
-        current_version: String::new(),
-    });
+    let state = state::State::read_or_default();
     if version == state.current_version {
         tracing::info!(%version, "already up to date");
         return Ok(());
@@ -110,34 +107,45 @@ async fn update(registry: &str, tag: &str, force: bool, token: Option<&str>) -> 
     pull_layers(registry, tag, &manifest, staging, token).await?;
     caustic_oci::verify_sha256sums(staging).context("verify checksums")?;
 
-    tracing::info!("invoking systemd-sysupdate");
-    let status = Command::new(SYSUPDATE_BIN)
-        .arg("update")
-        .status()
-        .context("run systemd-sysupdate")?;
-    if !status.success() {
-        return Err(anyhow!("systemd-sysupdate failed with status {status:?}"));
-    }
+    tracing::info!("applying update to inactive slot");
+    slot::apply_update(staging).context("apply update")?;
 
-    write_state(&State {
-        current_version: version.clone(),
-    })?;
-    tracing::info!(%version, "update staged, reboot pending");
+    tracing::info!(%version, "update staged, tryboot reboot pending");
+    reboot::tryboot().context("trigger tryboot")?;
     Ok(())
 }
 
 fn verify_boot_healthy() -> Result<()> {
-    let output = Command::new(SYSTEMCTL_BIN)
-        .args(["is-system-running"])
-        .output()
-        .context("run systemctl is-system-running")?;
-    let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    match status.as_str() {
-        "running" | "degraded" => Ok(()),
+    let state = systemctl::is_system_running()?;
+    match state {
+        SystemState::Running | SystemState::Degraded => Ok(()),
         other => Err(anyhow!(
-            "current boot is unhealthy ({other}); refusing to update (use --force to override)"
+            "current boot is unhealthy ({other:?}); refusing to update (use --force to override)"
         )),
     }
+}
+
+fn commit() -> Result<()> {
+    let version = read_running_version()?;
+    tracing::info!(%version, "committing running version to state");
+    state::State {
+        current_version: version,
+    }
+    .write()?;
+    Ok(())
+}
+
+fn read_running_version() -> Result<String> {
+    let content = fs::read_to_string("/etc/os-release")
+        .or_else(|_| fs::read_to_string("/usr/lib/os-release"))
+        .context("read os-release")?;
+    content
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("VERSION_ID=")
+                .map(|v| v.trim_matches('"').to_string())
+        })
+        .ok_or_else(|| anyhow!("VERSION_ID not found in os-release"))
 }
 
 fn factory_reset() -> Result<()> {
@@ -190,18 +198,4 @@ fn clear_dir(dir: &Path) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn read_state() -> Result<State> {
-    let bytes = fs::read(STATE_FILE).context("read state")?;
-    serde_json::from_slice(&bytes).context("parse state")
-}
-
-fn write_state(state: &State) -> Result<()> {
-    let path = PathBuf::from(STATE_FILE);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).ok();
-    }
-    let bytes = serde_json::to_vec_pretty(state)?;
-    fs::write(path, bytes).context("write state")
 }

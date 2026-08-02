@@ -19,6 +19,7 @@ in
       hideMounts = true;
       directories = [
         "/var/lib/aperture"
+        "/var/lib/caustic-ota"
         "/var/lib/dropbear"
         "/var/lib/nixos"
         "/var/log/journal"

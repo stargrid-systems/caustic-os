@@ -2,7 +2,6 @@
   lib,
   config,
   pkgs,
-  securebootKeys ? null,
   imageId ? "caustic-os",
   otaRegistry ? "ghcr.io/stargrid-systems/caustic-os",
   ...
@@ -11,26 +10,6 @@ let
   versionFile = lib.fileContents ../../version.txt;
 in
 {
-  imports = [
-    ./image.nix
-    ./update-package.nix
-    ./updates.nix
-  ];
-
-  options.caustic.secureboot.keys = lib.mkOption {
-    type = lib.types.nullOr (
-      lib.types.submodule {
-        options = {
-          key = lib.mkOption { type = lib.types.path; };
-          cert = lib.mkOption { type = lib.types.path; };
-        };
-      }
-    );
-    default = securebootKeys;
-    internal = true;
-    description = "Secure Boot signing keys for UKI and systemd-boot. null disables signing.";
-  };
-
   config = {
     system = {
       stateVersion = "26.05";
@@ -51,58 +30,35 @@ in
 
     services.caustic-ota.registry = lib.mkDefault otaRegistry;
 
-    boot = {
-      kernelPackages = pkgs.linuxPackages_6_12;
-      loader = {
-        grub.enable = false;
-        generic-extlinux-compatible.enable = false;
-      };
-      initrd = {
-        systemd.enable = true;
-        availableKernelModules = [
-          "usbhid"
-          "usb_storage"
-          "vc4"
-          "pcie_brcmstb"
-          "reset-raspberrypi"
-        ];
-      };
-      uki.settings.UKI = lib.optionalAttrs (securebootKeys != null) {
-        SecureBootCertificate = securebootKeys.cert;
-        SecureBootPrivateKey = securebootKeys.key;
-      };
+    boot.native-rpi = {
+      enable = true;
+      slot.enable = true;
     };
 
     hardware.deviceTree.enable = true;
 
     fileSystems = {
-      "/" = {
-        fsType = "tmpfs";
-        options = [
-          "mode=755"
-          "size=50%"
-        ];
-        neededForBoot = true;
-      };
-      "/boot" = {
-        device = "/dev/disk/by-partlabel/ESP";
+      "/boot/a" = {
+        device = "/dev/mmcblk0p1";
         fsType = "vfat";
         options = [
           "rw"
           "nofail"
         ];
       };
-      "/persist" = {
-        device = "/dev/disk/by-partlabel/persist";
-        fsType = "ext4";
-        neededForBoot = true;
+      "/boot/b" = {
+        device = "/dev/mmcblk0p2";
+        fsType = "vfat";
+        options = [
+          "rw"
+          "nofail"
+        ];
       };
     };
 
     caustic = {
       hardening.enable = true;
       networking.enable = true;
-      recovery.enable = true;
       users.enable = true;
       persist.enable = true;
     };
