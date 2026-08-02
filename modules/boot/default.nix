@@ -18,6 +18,8 @@ let
   customKernelPackages = pkgs.linuxKernel.packagesFor (
     pkgs.linux_6_12.override {
       ignoreConfigErrors = true;
+      autoModules = false;
+      preferBuiltin = true;
       structuredExtraConfig = with lib.kernel; {
         MODULES = lib.mkForce no;
 
