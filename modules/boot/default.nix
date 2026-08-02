@@ -16,7 +16,7 @@ let
   allKernelParams = lib.concatStringsSep " " config.boot.kernelParams;
 
   customKernelPackages = pkgs.linuxKernel.packagesFor (
-    pkgs.linux_6_12.override {
+    (pkgs.linux_6_12.override {
       ignoreConfigErrors = true;
       enableCommonConfig = false;
       structuredExtraConfig = with lib.kernel; {
@@ -71,7 +71,10 @@ let
         KEXEC = lib.mkForce no;
         HIBERNATION = lib.mkForce no;
       };
-    }
+    }).overrideAttrs
+      (old: {
+        postInstall = lib.replaceStrings [ "unlink " ] [ "rm -f " ] (old.postInstall or "");
+      })
   );
 
   initScript = pkgs.writeShellScript "nixos-init" ''
