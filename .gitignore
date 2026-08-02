@@ -3,3 +3,4 @@
 target/
 target-distrobox/
 formatter-result
+.pre-commit-config.yaml
