@@ -178,6 +178,7 @@
           securebootKeys ? securebootKeysGlobal,
           imageId ? "caustic-os",
           otaRegistry ? "ghcr.io/stargrid-systems/caustic-os",
+          extraModules ? [ ],
         }:
         nixpkgs.lib.nixosSystem {
           inherit system;
@@ -195,7 +196,8 @@
             self.nixosModules.causticOta
             self.nixosModules.persist
             ./systems/production/default.nix
-          ];
+          ]
+          ++ extraModules;
         };
 
       securebootKeysGlobal =
@@ -245,6 +247,11 @@
           securebootKeys = null;
           imageId = "caustic-os-dev";
           otaRegistry = "ghcr.io/stargrid-systems/caustic-os-dev";
+          extraModules = [
+            ({ lib, ... }: {
+              users.users.root.hashedPassword = lib.mkForce "";
+            })
+          ];
         };
       };
 
