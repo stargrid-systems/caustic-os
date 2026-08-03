@@ -247,9 +247,9 @@
           imageId = "caustic-os-dev";
           otaRegistry = "ghcr.io/stargrid-systems/caustic-os-dev";
           extraModules = [
-            { lib, ... }: {
+            ({ lib, ... }: {
               users.users.root.hashedPassword = lib.mkForce "";
-            }
+            })
           ];
         };
       };
