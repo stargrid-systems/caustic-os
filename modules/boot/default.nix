@@ -110,8 +110,6 @@ let
     [all]
     tryboot_a_b=1
     boot_partition=1
-    [tryboot]
-    boot_partition=2
   '';
 
   bootFiles =
