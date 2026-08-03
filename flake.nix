@@ -196,7 +196,8 @@
             self.nixosModules.causticOta
             self.nixosModules.persist
             ./systems/production/default.nix
-          ] ++ extraModules;
+          ]
+          ++ extraModules;
         };
 
       securebootKeysGlobal =
