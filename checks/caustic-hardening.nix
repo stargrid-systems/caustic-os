@@ -32,7 +32,7 @@ assert lib.assertMsg (
 ) "unprivileged_bpf_disabled must be 1";
 assert lib.assertMsg (sysctl."kernel.sysrq" == 0) "sysrq must be 0";
 assert lib.assertMsg (sysctl."kernel.yama.ptrace_scope" == 2) "ptrace_scope must be 2";
-assert lib.assertMsg (sysctl."net.ipv4.conf.all.rp_filter" == 1) "rp_filter must be 1";
+assert lib.assertMsg (sysctl."net.ipv4.conf.all.rp_filter" == 2) "rp_filter must be 2";
 assert lib.assertMsg (sysctl."net.ipv4.tcp_syncookies" == 1) "tcp_syncookies must be 1";
 assert lib.assertMsg cfg.security.apparmor.enable "AppArmor must be enabled";
 assert lib.assertMsg (builtins.elem "bluetooth" cfg.boot.blacklistedKernelModules)
