@@ -82,7 +82,8 @@ in
         enable = true;
         allowedTCPPorts = [ 80 ];
       };
-      useDHCP = lib.mkDefault true;
+      useDHCP = false;
+      interfaces.end0.useDHCP = true;
     };
 
     nix.package = pkgs.nix;
