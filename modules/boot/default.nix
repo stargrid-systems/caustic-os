@@ -19,7 +19,7 @@ let
     echo "caustic-init: mounting /run"
     ${pkgs.util-linux}/bin/mount -t tmpfs tmpfs /run
     echo "caustic-init: linking current-system"
-    ln -sf ${toplevel} /run/current-system
+    ${pkgs.coreutils}/bin/ln -sf ${toplevel} /run/current-system
     echo "caustic-init: starting systemd"
     exec ${toplevel}/sw/lib/systemd/systemd
   '';
@@ -56,6 +56,7 @@ let
         ln -sf /run/current-system/sw/lib64 $rootDir/lib64
 
         cp -rs ${config.system.build.etc}/etc/. $rootDir/etc/
+        ${pkgs.systemd}/bin/systemd-machine-id-setup --root $rootDir --print 2>/dev/null || true
         ln -sf ${initScript} $rootDir/init
 
         SOURCE_DATE_EPOCH=0 mksquashfs $rootDir $out \
@@ -142,7 +143,7 @@ let
             dev=/dev/mmcblk0p6
           fi
           printf '%s\n' \
-            "root=/dev/dm-0 rootfstype=squashfs ro init=${initScript} dm-mod.create=\"vroot,,0,ro,0 ''${sectors} verity 1 ''${dev} ''${dev} 4096 4096 ''${data_blocks} ''${data_blocks} sha256 ''${root_hash} ''${salt} restart_on_corruption\" ${allKernelParams}" \
+            "root=/dev/dm-0 rootfstype=squashfs ro init=${initScript} dm-mod.create=\"vroot,,0,ro,0 ''${sectors} verity 1 ''${dev} ''${dev} 4096 4096 ''${data_blocks} ''${data_blocks} sha256 ''${root_hash} ''${salt} 1 restart_on_corruption\" ${allKernelParams}" \
             > "$out/cmdline-$slot.txt"
         done
       '';
