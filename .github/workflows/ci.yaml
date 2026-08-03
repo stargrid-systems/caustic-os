@@ -132,7 +132,7 @@ jobs:
 
           WORKDIR=$(mktemp -d)
           cp "$KERNEL/Image" "$WORKDIR/Image"
-          cp "$DISK" "$WORKDIR/disk.img"
+          install -m 644 "$DISK" "$WORKDIR/disk.img"
 
           ACCEL=""
           if [ -e /dev/kvm ]; then
