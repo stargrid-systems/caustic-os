@@ -196,13 +196,6 @@
 # CONFIG_USB_LAN78XX is not set
 # CONFIG_USB_USBNET is not set
 
-# CONFIG_VIRTIO_PCI is not set
-# CONFIG_VIRTIO_BLK is not set
-# CONFIG_VIRTIO_NET is not set
-# CONFIG_VIRTIO_CONSOLE is not set
-# CONFIG_VIRTIO_BALLOON is not set
-# CONFIG_VIRTIO_MMIO is not set
-
 # CONFIG_SCSI_MPT3SAS is not set
 # CONFIG_SCSI_MPT2SAS is not set
 # CONFIG_MEGARAID_NEWGEN is not set
