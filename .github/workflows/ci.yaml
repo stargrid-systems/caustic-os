@@ -160,7 +160,7 @@ jobs:
             -kernel "$WORKDIR/Image" \
             -dtb "$WORKDIR/bcm2711-rpi-4-b.dtb" \
             -drive file="$WORKDIR/disk.img",format=raw,if=sd \
-            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA1,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=-1 dm-mod.waitfor=mmcblk1 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk1p5 /dev/mmcblk1p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt restart_on_corruption\"" \
+            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA1,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=-1 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk1p5 /dev/mmcblk1p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt restart_on_corruption\" rootwait" \
             > qemu-output.log 2>&1 || true
 
           echo "=== QEMU output (first 80 lines) ==="
