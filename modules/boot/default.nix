@@ -142,7 +142,7 @@ let
             dev=/dev/mmcblk0p6
           fi
           printf '%s\n' \
-            "root=/dev/dm-0 rootfstype=squashfs ro init=${initScript} dm-mod.create=\"vroot,,0,ro,0 ''${sectors} verity 1 ''${dev} ''${dev} 4096 4096 ''${data_blocks} ''${data_blocks} sha256 ''${root_hash} ''${salt} restart_on_corruption\" ${allKernelParams}" \
+            "root=/dev/dm-0 rootfstype=squashfs ro init=${initScript} dm-mod.create=\"vroot,,0,ro,0 ''${sectors} verity 1 ''${dev} ''${dev} 4096 4096 ''${data_blocks} ''${data_blocks} sha256 ''${root_hash} ''${salt} 1 restart_on_corruption\" ${allKernelParams}" \
             > "$out/cmdline-$slot.txt"
         done
       '';
