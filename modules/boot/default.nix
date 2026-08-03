@@ -104,6 +104,8 @@ let
     dtoverlay=miniuart-bt
     kernel=Image
     cmdline=cmdline.txt
+    start_file=start4.elf
+    fixup_file=fixup4.dat
   '';
 
   autobootTxt = pkgs.writeText "autoboot.txt" ''
@@ -127,6 +129,8 @@ let
         cp ${autobootTxt} $out/autoboot.txt
         cp ${rpiFw}/share/raspberrypi/boot/start4.elf $out/
         cp ${rpiFw}/share/raspberrypi/boot/fixup4.dat $out/
+        cp ${rpiFw}/share/raspberrypi/boot/start.elf $out/
+        cp ${rpiFw}/share/raspberrypi/boot/fixup.dat $out/
         cp ${rpiFw}/share/raspberrypi/boot/bcm2711-rpi-cm4.dtb $out/
         cp ${rpiFw}/share/raspberrypi/boot/overlays/miniuart-bt.dtbo $out/overlays/
 
