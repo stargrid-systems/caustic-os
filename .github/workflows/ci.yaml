@@ -107,10 +107,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Nix with OCI cache
-        uses: ./.github/actions/setup-nix-cache
+      - name: Setup Nix
+        uses: ./.github/actions/setup-nix
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          kvm: true
+          save: false
 
       - name: Build artifacts
         run: |
