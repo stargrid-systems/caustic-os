@@ -104,6 +104,8 @@ let
     dtoverlay=miniuart-bt
     kernel=Image
     cmdline=cmdline.txt
+    start_file=start4.elf
+    fixup_file=fixup4.dat
   '';
 
   autobootTxt = pkgs.writeText "autoboot.txt" ''
@@ -125,6 +127,8 @@ let
         cp ${autobootTxt} $out/autoboot.txt
         cp ${rpiFw}/share/raspberrypi/boot/start4.elf $out/
         cp ${rpiFw}/share/raspberrypi/boot/fixup4.dat $out/
+        cp ${rpiFw}/share/raspberrypi/boot/start.elf $out/
+        cp ${rpiFw}/share/raspberrypi/boot/fixup.dat $out/
         cp ${rpiFw}/share/raspberrypi/boot/bcm2711-rpi-cm4.dtb $out/
         cp ${rpiFw}/share/raspberrypi/boot/overlays/miniuart-bt.dtbo $out/overlays/
 
@@ -147,14 +151,19 @@ let
     slot:
     pkgs.runCommand "boot-$slot.img"
       {
-        nativeBuildInputs = [ pkgs.mtools ];
+        nativeBuildInputs = [
+          pkgs.dosfstools
+          pkgs.mtools
+        ];
       }
       ''
         img=$out
         truncate -s 256M $img
-        mformat -i $img -F -T 524288 -v BOOT ::
+        mkfs.vfat -F 32 -n BOOT $img
         mcopy -i $img -s ${bootFiles}/* ::
         mcopy -i $img -o ${bootFiles}/cmdline-${slot}.txt ::cmdline.txt
+        fsck.vfat -vn $img
+        mtype -i $img ::start4.elf >/dev/null || { echo "ERROR: start4.elf missing from boot image"; exit 1; }
       '';
 
   bootFatImageA = makeBootFat "a";
