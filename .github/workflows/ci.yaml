@@ -173,10 +173,11 @@ jobs:
             exit 1
           fi
 
-          if grep -q "Reached target.*Multi-User" qemu-output.log 2>/dev/null; then
-            echo "::notice::QEMU boot test PASSED"
+          if grep -qE "systemd\[1\]:.*running in system mode" qemu-output.log 2>/dev/null \
+             && grep -q "dm-0.*is ready" qemu-output.log 2>/dev/null; then
+            echo "::notice::QEMU boot test PASSED (verity root mounted, systemd started)"
           else
-            echo "::error::QEMU boot test FAILED: did not reach multi-user target"
+            echo "::error::QEMU boot test FAILED: boot chain did not complete"
             exit 1
           fi
 

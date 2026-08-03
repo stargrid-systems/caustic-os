@@ -19,7 +19,7 @@ let
     echo "caustic-init: mounting /run"
     ${pkgs.util-linux}/bin/mount -t tmpfs tmpfs /run
     echo "caustic-init: linking current-system"
-    ln -sf ${toplevel} /run/current-system
+    ${pkgs.coreutils}/bin/ln -sf ${toplevel} /run/current-system
     echo "caustic-init: starting systemd"
     exec ${toplevel}/sw/lib/systemd/systemd
   '';
@@ -56,6 +56,7 @@ let
         ln -sf /run/current-system/sw/lib64 $rootDir/lib64
 
         cp -rs ${config.system.build.etc}/etc/. $rootDir/etc/
+        ${pkgs.systemd}/bin/systemd-machine-id-setup --root $rootDir --print 2>/dev/null || true
         ln -sf ${initScript} $rootDir/init
 
         SOURCE_DATE_EPOCH=0 mksquashfs $rootDir $out \
