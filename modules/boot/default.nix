@@ -195,6 +195,7 @@ let
         usrAStart=$(( extStart + 2048 ))
         usrBStart=$(( usrAStart + usrBlocks + 2048 ))
         totalSectors=$(( usrBStart + usrBlocks + 2048 ))
+        totalSectors=$(( ((totalSectors + 1023) / 1024) * 1024 ))
 
         truncate -s $(( totalSectors * 512 )) $img
 
