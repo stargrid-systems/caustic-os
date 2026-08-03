@@ -22,7 +22,7 @@ let
 
     buildPhase = ''
       make ARCH=arm64 defconfig
-      cat ${./config-overrides} >> .config
+      cat ${./config-enable} ${./config-disable} >> .config
       make ARCH=arm64 olddefconfig
     '';
 

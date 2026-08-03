@@ -32,11 +32,7 @@ pkgs.testers.runNixOSTest {
         persist.enable = true;
       };
 
-      boot.kernelPackages =
-        if pkgs.stdenv.hostPlatform.isAarch64 then
-          self.nixosConfigurations.production.config.boot.kernelPackages
-        else
-          pkgs.linuxPackages;
+      boot.kernelPackages = pkgs.linuxPackages;
 
       users.users.root.hashedPassword = pkgs.lib.mkForce null;
 
