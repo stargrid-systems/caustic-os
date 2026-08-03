@@ -131,6 +131,12 @@ jobs:
           source "$VERITY/verity.txt"
           SECTORS=$(( data_blocks * 8 ))
 
+          # Create a small persist partition so systemd can mount /persist
+          # instead of dropping to emergency mode.
+          MKE2FS=$(nix build --no-link --print-out-paths nixpkgs#e2fsprogs)/sbin/mkfs.ext4
+          truncate -s 128M "$WORKDIR/persist.img"
+          "$MKE2FS" -t ext4 -L persist -F "$WORKDIR/persist.img"
+
           QEMU=$(nix build --no-link --print-out-paths nixpkgs#qemu)/bin/qemu-system-aarch64
 
           ACCEL="-cpu cortex-a72"
@@ -141,7 +147,7 @@ jobs:
           echo "=== QEMU boot test ==="
           echo "data_blocks=$data_blocks sectors=$SECTORS"
 
-          timeout 600 "$QEMU" \
+          timeout 180 "$QEMU" \
             -machine virt \
             $ACCEL \
             -m 512M \
@@ -149,6 +155,7 @@ jobs:
             -no-reboot \
             -kernel "$WORKDIR/Image" \
             -drive file="$WORKDIR/usr.bin",format=raw,if=virtio,readonly=on \
+            -drive file="$WORKDIR/persist.img",format=raw,if=virtio \
             -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA0 ignore_loglevel panic=-1 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/vda /dev/vda 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt\"" \
             > qemu-output.log 2>&1 || true
 
@@ -157,10 +164,15 @@ jobs:
           echo "=== QEMU output (last 100 lines) ==="
           tail -100 qemu-output.log
 
-          if grep -q "caustic-init: starting systemd" qemu-output.log; then
+          if grep -q "Emergency Mode" qemu-output.log; then
+            echo "::error::QEMU boot test FAILED: system entered emergency mode"
+            exit 1
+          fi
+
+          if grep -q "Reached target.*Multi-User" qemu-output.log; then
             echo "::notice::QEMU boot test PASSED"
           else
-            echo "::error::QEMU boot test FAILED"
+            echo "::error::QEMU boot test FAILED: did not reach multi-user target"
             exit 1
           fi
 
