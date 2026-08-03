@@ -282,7 +282,7 @@ in
         "earlycon=pl011,mmio32,0xfe201000"
         "ignore_loglevel"
         "panic=30"
-        "dm-mod.waitfor=mmcblk0"
+        "dm-mod.waitfor=/dev/mmcblk0"
         "systemd.show_status=1"
         "systemd.log_level=info"
       ];
