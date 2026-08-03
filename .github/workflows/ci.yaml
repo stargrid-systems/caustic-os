@@ -143,6 +143,7 @@ jobs:
             -M raspi4b \
             $ACCEL \
             -serial mon:stdio \
+            -display none \
             -no-reboot \
             -kernel "$WORKDIR/Image" \
             -sd "$WORKDIR/disk.img" \
