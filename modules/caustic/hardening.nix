@@ -42,8 +42,8 @@ in
         "kernel.sysrq" = 0;
         "kernel.yama.ptrace_scope" = 2;
 
-        "net.ipv4.conf.all.rp_filter" = 1;
-        "net.ipv4.conf.default.rp_filter" = 1;
+        "net.ipv4.conf.all.rp_filter" = 2;
+        "net.ipv4.conf.default.rp_filter" = 2;
         "net.ipv4.conf.all.accept_redirects" = 0;
         "net.ipv4.conf.default.accept_redirects" = 0;
         "net.ipv4.conf.all.send_redirects" = 0;
