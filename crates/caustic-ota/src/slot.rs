@@ -8,6 +8,7 @@ use crate::tar::extract;
 
 const PARTITION_DT_PATH: &str = "/proc/device-tree/chosen/bootloader/partition";
 const BOOT_EXTRACT_DIR: &str = "/var/lib/caustic-ota/boot-extract";
+const AUTOBOOT_PATH: &str = "/boot/a/autoboot.txt";
 
 struct InactiveSlot {
     number: u32,
@@ -115,6 +116,14 @@ pub fn apply_update(staging: &Path) -> Result<()> {
         inactive_part = slot.number,
         "update applied to inactive slot"
     );
+
+    let autoboot = format!(
+        "[all]\ntryboot_a_b=1\nboot_partition={}\n[tryboot]\nboot_partition={}\n",
+        current_part, slot.number
+    );
+    fs::write(AUTOBOOT_PATH, autoboot).context("write tryboot autoboot.txt")?;
+    tracing::info!("wrote tryboot autoboot.txt");
+
     Ok(())
 }
 

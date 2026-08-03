@@ -56,6 +56,13 @@ in
             exit 1
           fi
 
+          if ! grep -q '^\[tryboot\]' "$autoboot"; then
+            echo "mark-slot-good: no [tryboot] section, already committed"
+            umount "$mnt"
+            rmdir "$mnt"
+            exit 0
+          fi
+
           curDefault=$(awk -F= '/^boot_partition=/ {print $2}' "$autoboot" | head -1)
           tryDefault=$(sed -n '/^\[tryboot\]/,/^\[/p' "$autoboot" | awk -F= '/^boot_partition=/ {print $2}' | head -1)
 
@@ -73,8 +80,8 @@ in
           fi
 
           tmp=$(mktemp)
-          printf '[all]\ntryboot_a_b=1\nboot_partition=%s\n[tryboot]\nboot_partition=%s\n' \
-            "$tryDefault" "$curDefault" > "$tmp"
+          printf '[all]\ntryboot_a_b=1\nboot_partition=%s\n' \
+            "$tryDefault" > "$tmp"
           mv "$tmp" "$autoboot"
           sync
           umount "$mnt"
