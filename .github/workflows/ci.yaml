@@ -134,6 +134,14 @@ jobs:
           cp "$KERNEL/Image" "$WORKDIR/Image"
           install -m 644 "$DISK" "$WORKDIR/disk.img"
 
+          echo "=== QEMU version ==="
+          "$QEMU" --version
+          echo "=== Kernel image ==="
+          file "$WORKDIR/Image"
+          ls -lh "$WORKDIR/Image"
+          echo "=== Disk image ==="
+          ls -lh "$WORKDIR/disk.img"
+
           ACCEL=""
           if [ -e /dev/kvm ]; then
             ACCEL="-enable-kvm -cpu host"
