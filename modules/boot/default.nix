@@ -155,6 +155,7 @@ let
         mformat -i $img -F -T 524288 -v BOOT ::
         mcopy -i $img -s ${bootFiles}/* ::
         mcopy -i $img -o ${bootFiles}/cmdline-${slot}.txt ::cmdline.txt
+        mtype -i $img ::start4.elf >/dev/null || { echo "ERROR: start4.elf missing from boot image"; exit 1; }
       '';
 
   bootFatImageA = makeBootFat "a";
