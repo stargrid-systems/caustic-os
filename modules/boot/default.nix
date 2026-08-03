@@ -102,7 +102,6 @@ let
     disable_overscan=1
     gpu_mem=16
     dtoverlay=miniuart-bt
-    dtoverlay=upstream-pi4
     kernel=Image
     cmdline=cmdline.txt
   '';
@@ -130,7 +129,6 @@ let
         cp ${rpiFw}/share/raspberrypi/boot/fixup4.dat $out/
         cp ${rpiFw}/share/raspberrypi/boot/bcm2711-rpi-cm4.dtb $out/
         cp ${rpiFw}/share/raspberrypi/boot/overlays/miniuart-bt.dtbo $out/overlays/
-        cp ${rpiFw}/share/raspberrypi/boot/overlays/upstream-pi4.dtbo $out/overlays/
 
         source ${verityArtifacts}/verity.txt
         sectors=$(( data_blocks * 8 ))
@@ -274,7 +272,8 @@ in
         "console=tty1"
         "earlycon=pl011,mmio32,0xfe201000"
         "ignore_loglevel"
-        "panic=-1"
+        "panic=30"
+        "dm-mod.waitfor=mmcblk0"
         "systemd.show_status=1"
         "systemd.log_level=info"
       ];
