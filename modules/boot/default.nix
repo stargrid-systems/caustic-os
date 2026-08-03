@@ -151,14 +151,18 @@ let
     slot:
     pkgs.runCommand "boot-$slot.img"
       {
-        nativeBuildInputs = [ pkgs.mtools ];
+        nativeBuildInputs = [
+          pkgs.dosfstools
+          pkgs.mtools
+        ];
       }
       ''
         img=$out
         truncate -s 256M $img
-        mformat -i $img -F -T 524288 -v BOOT ::
+        mkfs.vfat -F 32 -n BOOT $img
         mcopy -i $img -s ${bootFiles}/* ::
         mcopy -i $img -o ${bootFiles}/cmdline-${slot}.txt ::cmdline.txt
+        fsck.vfat -vn $img
         mtype -i $img ::start4.elf >/dev/null || { echo "ERROR: start4.elf missing from boot image"; exit 1; }
       '';
 
