@@ -112,44 +112,41 @@ jobs:
         with:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
 
-      - name: Build kernel and verity artifacts
+      - name: Build artifacts
         run: |
           nix build --no-link \
             .#nixosConfigurations.production.config.boot.kernelPackages.kernel \
-            .#nixosConfigurations.production.config.system.build.verityArtifacts
+            .#nixosConfigurations.production.config.system.build.verityArtifacts \
+            .#nixosConfigurations.production.config.system.build.diskImage \
+            nixpkgs#qemu
 
       - name: QEMU boot test
         run: |
           KERNEL=$(nix path-info .#nixosConfigurations.production.config.boot.kernelPackages.kernel)
           VERITY=$(nix path-info .#nixosConfigurations.production.config.system.build.verityArtifacts)
+          DISK=$(nix path-info .#nixosConfigurations.production.config.system.build.diskImage)
+          QEMU=$(nix path-info nixpkgs#qemu)/bin/qemu-system-aarch64
 
-          # Copy to temp dir because QEMU opens drives read-write
-          # and nix store files are read-only.
-          WORKDIR=$(mktemp -d)
-          cp "$KERNEL/Image" "$WORKDIR/Image"
-          cp "$VERITY/usr.bin" "$WORKDIR/usr.bin"
           source "$VERITY/verity.txt"
           SECTORS=$(( data_blocks * 8 ))
 
-          QEMU=$(nix build --no-link --print-out-paths nixpkgs#qemu)/bin/qemu-system-aarch64
+          WORKDIR=$(mktemp -d)
+          cp "$KERNEL/Image" "$WORKDIR/Image"
+          cp "$DISK" "$WORKDIR/disk.img"
 
-          ACCEL="-cpu cortex-a72"
+          ACCEL=""
           if [ -e /dev/kvm ]; then
             ACCEL="-enable-kvm -cpu host"
           fi
 
-          echo "=== QEMU boot test ==="
-          echo "data_blocks=$data_blocks sectors=$SECTORS"
-
-          timeout 600 "$QEMU" \
-            -machine virt \
+          timeout 180 "$QEMU" \
+            -M raspi4b \
             $ACCEL \
-            -m 512M \
-            -nographic \
+            -serial mon:stdio \
             -no-reboot \
             -kernel "$WORKDIR/Image" \
-            -drive file="$WORKDIR/usr.bin",format=raw,if=virtio,readonly=on \
-            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA0 ignore_loglevel panic=-1 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/vda /dev/vda 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt\"" \
+            -sd "$WORKDIR/disk.img" \
+            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA0,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=-1 dm-mod.waitfor=mmcblk0 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk0p5 /dev/mmcblk0p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt restart_on_corruption\"" \
             > qemu-output.log 2>&1 || true
 
           echo "=== QEMU output (first 50 lines) ==="
@@ -157,10 +154,15 @@ jobs:
           echo "=== QEMU output (last 100 lines) ==="
           tail -100 qemu-output.log
 
-          if grep -q "caustic-init: starting systemd" qemu-output.log; then
+          if grep -q "Emergency Mode" qemu-output.log; then
+            echo "::error::QEMU boot test FAILED: system entered emergency mode"
+            exit 1
+          fi
+
+          if grep -q "Reached target.*Multi-User" qemu-output.log; then
             echo "::notice::QEMU boot test PASSED"
           else
-            echo "::error::QEMU boot test FAILED"
+            echo "::error::QEMU boot test FAILED: did not reach multi-user target"
             exit 1
           fi
 
