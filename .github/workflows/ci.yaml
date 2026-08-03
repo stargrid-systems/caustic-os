@@ -121,7 +121,7 @@ jobs:
             .#nixosConfigurations.production.config.system.build.verityArtifacts \
             .#nixosConfigurations.production.config.system.build.diskImage \
             nixpkgs#qemu \
-            nixpkgs#dtc
+            nixpkgs#raspberrypifw
 
       - name: QEMU boot test
         run: |
@@ -129,7 +129,7 @@ jobs:
           VERITY=$(nix path-info .#nixosConfigurations.production.config.system.build.verityArtifacts)
           DISK=$(nix path-info .#nixosConfigurations.production.config.system.build.diskImage)
           QEMU=$(nix path-info nixpkgs#qemu)/bin/qemu-system-aarch64
-          DTC=$(nix path-info nixpkgs#dtc)/bin/dtc
+          RPIFW=$(nix path-info nixpkgs#raspberrypifw)
 
           source "$VERITY/verity.txt"
           SECTORS=$(( data_blocks * 8 ))
@@ -137,6 +137,7 @@ jobs:
           WORKDIR=$(mktemp -d)
           cp "$KERNEL/Image" "$WORKDIR/Image"
           install -m 644 "$DISK" "$WORKDIR/disk.img"
+          cp "$RPIFW/share/raspberrypi/boot/bcm2711-rpi-4-b.dtb" "$WORKDIR/bcm2711-rpi-4-b.dtb"
 
           echo "=== QEMU version ==="
           "$QEMU" --version
@@ -145,21 +146,8 @@ jobs:
           ls -lh "$WORKDIR/Image"
           echo "=== Disk image ==="
           ls -lh "$WORKDIR/disk.img"
-          echo "=== KVM ==="
-          if [ -e /dev/kvm ]; then
-            echo "KVM: available"
-            ls -la /dev/kvm
-          else
-            echo "KVM: not available"
-          fi
-
-          echo "=== Dumping QEMU raspi4b device tree ==="
-          "$QEMU" -M raspi4b,dumpdtb="$WORKDIR/raspi4b.dtb" -nographic
-          "$DTC" -I dtb -O dts "$WORKDIR/raspi4b.dtb" > "$WORKDIR/raspi4b.dts" 2>/dev/null || true
-          echo "--- serial aliases ---"
-          grep -A10 "aliases" "$WORKDIR/raspi4b.dts" | head -20 || true
-          echo "--- serial nodes ---"
-          grep -B2 -A10 "serial@" "$WORKDIR/raspi4b.dts" | head -60 || true
+          echo "=== DTB ==="
+          ls -lh "$WORKDIR/bcm2711-rpi-4-b.dtb"
 
           echo "=== Running QEMU (TCG, no KVM) ==="
 
@@ -167,27 +155,25 @@ jobs:
             -M raspi4b \
             -cpu cortex-a72 \
             -serial mon:stdio \
-            -serial file:"$WORKDIR/serial2.log" \
             -display none \
             -no-reboot \
             -kernel "$WORKDIR/Image" \
+            -dtb "$WORKDIR/bcm2711-rpi-4-b.dtb" \
             -drive file="$WORKDIR/disk.img",format=raw,if=sd \
-            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA0,115200 console=ttyAMA1,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=-1 dm-mod.waitfor=mmcblk0 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk0p5 /dev/mmcblk0p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt restart_on_corruption\"" \
+            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA0,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=-1 dm-mod.waitfor=mmcblk0 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk0p5 /dev/mmcblk0p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt restart_on_corruption\"" \
             > qemu-output.log 2>&1 || true
 
           echo "=== QEMU output (first 80 lines) ==="
           head -80 qemu-output.log
           echo "=== QEMU output (last 100 lines) ==="
           tail -100 qemu-output.log
-          echo "=== Serial 2 output ==="
-          cat "$WORKDIR/serial2.log" || echo "(empty or missing)"
 
-          if grep -q "Emergency Mode" qemu-output.log "$WORKDIR/serial2.log" 2>/dev/null; then
+          if grep -q "Emergency Mode" qemu-output.log 2>/dev/null; then
             echo "::error::QEMU boot test FAILED: system entered emergency mode"
             exit 1
           fi
 
-          if grep -q "Reached target.*Multi-User" qemu-output.log "$WORKDIR/serial2.log" 2>/dev/null; then
+          if grep -q "Reached target.*Multi-User" qemu-output.log 2>/dev/null; then
             echo "::notice::QEMU boot test PASSED"
           else
             echo "::error::QEMU boot test FAILED: did not reach multi-user target"
