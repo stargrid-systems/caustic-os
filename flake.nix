@@ -28,7 +28,7 @@
     };
 
     aperture-src = {
-      url = "github:stargrid-systems/aperture/6711356fcf0eb0b29f479b309c548b56596c6f13";
+      url = "github:stargrid-systems/aperture/67074b340519002b7fee12520a35d1538e56d913";
       flake = false;
     };
 
