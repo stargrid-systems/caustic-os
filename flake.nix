@@ -252,8 +252,8 @@
               users.users.root.hashedPassword = lib.mkForce "";
               networking.firewall.enable = lib.mkForce false;
               boot.kernel.sysctl = {
-                "net.ipv4.conf.all.rp_filter" = 0;
-                "net.ipv4.conf.default.rp_filter" = 0;
+                "net.ipv4.conf.all.rp_filter" = lib.mkForce 0;
+                "net.ipv4.conf.default.rp_filter" = lib.mkForce 0;
               };
             })
           ];
