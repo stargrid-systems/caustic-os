@@ -37,7 +37,7 @@ let
     kernelPatches = baseKernel.kernelPatches or [ ];
     configfile = kernelConfig;
     config = {
-      CONFIG_MODULES = "n";
+      CONFIG_MODULES = "y";
       CONFIG_RUST = "n";
     };
   };
@@ -45,6 +45,5 @@ in
 {
   boot = {
     kernelPackages = lib.mkDefault (pkgs.linuxKernel.packagesFor customKernel);
-    kernelModules = lib.mkForce [ ];
   };
 }

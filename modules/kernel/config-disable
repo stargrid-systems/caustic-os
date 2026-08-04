@@ -59,13 +59,6 @@
 # CONFIG_VFIO is not set
 # CONFIG_XEN is not set
 
-# CONFIG_VIRTIO_PCI is not set
-# CONFIG_VIRTIO_BLK is not set
-# CONFIG_VIRTIO_NET is not set
-# CONFIG_VIRTIO_CONSOLE is not set
-# CONFIG_VIRTIO_BALLOON is not set
-# CONFIG_VIRTIO_MMIO is not set
-
 # CONFIG_IPMI_HANDLER is not set
 # CONFIG_BLK_DEV_MD is not set
 # CONFIG_EDAC is not set
@@ -85,8 +78,6 @@
 # CONFIG_NFS_FS is not set
 # CONFIG_NFSD is not set
 # CONFIG_BTRFS_FS is not set
-# CONFIG_9P_FS is not set
-# CONFIG_NET_9P is not set
 # CONFIG_FUSE_FS is not set
 # CONFIG_CUSE is not set
 # CONFIG_OVERLAY_FS is not set

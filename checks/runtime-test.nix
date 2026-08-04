@@ -5,14 +5,15 @@
 let
   inherit (pkgs) lib;
   inherit (pkgs.stdenv.hostPlatform) system;
+  isAarch64 = system == "aarch64-linux";
 
-  realImageBuilds = lib.optionals (system == "aarch64-linux") [
+  realImageBuilds = lib.optionals isAarch64 [
     self.nixosConfigurations.devImage.config.system.build.toplevel
     self.nixosConfigurations.production.config.system.build.toplevel
   ];
 in
 pkgs.testers.runNixOSTest {
-  name = "caustic-runtime";
+  name = "caustic-test";
 
   nodes.machine =
     { pkgs, ... }:
@@ -23,6 +24,8 @@ pkgs.testers.runNixOSTest {
         self.nixosModules.dropbear
         self.nixosModules.causticOta
         self.nixosModules.persist
+      ] ++ lib.optionals isAarch64 [
+        self.nixosModules.kernel
       ];
 
       caustic = {
@@ -32,9 +35,9 @@ pkgs.testers.runNixOSTest {
         persist.enable = true;
       };
 
-      boot.kernelPackages = pkgs.linuxPackages;
+      boot.kernelPackages = lib.mkIf (!isAarch64) pkgs.linuxPackages;
 
-      users.users.root.hashedPassword = pkgs.lib.mkForce null;
+      users.users.root.hashedPassword = null;
 
       services = {
         aperture = {
@@ -91,5 +94,17 @@ pkgs.testers.runNixOSTest {
           machine.succeed("echo survived > /var/lib/aperture/persist-test")
           machine.succeed("test -f /persist/var/lib/aperture/persist-test")
           assert "survived" in machine.succeed("cat /persist/var/lib/aperture/persist-test")
+
+      with subtest("firewall is active with nftables rules"):
+          machine.wait_for_unit("firewall.service")
+          machine.succeed("nft list ruleset")
+
+      with subtest("IPv6 is enabled"):
+          machine.succeed("ip -6 addr show dev lo | grep -q inet6")
+
+      with subtest("sysctl hardening is applied"):
+          assert "2" in machine.succeed("cat /proc/sys/kernel/kptr_restrict")
+          assert "1" in machine.succeed("cat /proc/sys/kernel/dmesg_restrict")
+          assert "0" in machine.succeed("cat /proc/sys/kernel/sysrq")
     '';
 }
