@@ -37,18 +37,7 @@ pkgs.testers.runNixOSTest {
       };
 
       boot.kernelPackages = lib.mkIf (!isAarch64) pkgs.linuxPackages;
-      boot.initrd.availableKernelModules = lib.mkIf isAarch64 (
-        lib.mkForce [
-          "virtio_blk"
-          "virtio_net"
-          "virtio_pci"
-          "virtio_scsi"
-          "9p"
-          "9pnet_virtio"
-          "xhci_pci"
-          "virtio_rng"
-        ]
-      );
+      boot.initrd.availableKernelModules = lib.mkIf isAarch64 (lib.mkForce [ ]);
 
       users.users.root.hashedPassword = null;
 
