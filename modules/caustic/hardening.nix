@@ -59,6 +59,6 @@ in
       };
     };
 
-    security.apparmor.enable = true;
+    security.apparmor.enable = lib.mkDefault true;
   };
 }

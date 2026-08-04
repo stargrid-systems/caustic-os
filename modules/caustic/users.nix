@@ -12,6 +12,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    users.users.root.hashedPassword = "!";
+    users.users.root.hashedPassword = lib.mkDefault "!";
   };
 }

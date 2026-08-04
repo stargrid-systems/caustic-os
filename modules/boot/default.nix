@@ -2,7 +2,6 @@
   config,
   lib,
   pkgs,
-  securebootKeys ? null,
   ...
 }:
 let
@@ -257,12 +256,6 @@ in
 
   options.boot.native-rpi = {
     enable = lib.mkEnableOption "native Raspberry Pi boot (no UEFI, no initramfs)";
-
-    secureBootKey = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
-      default = if securebootKeys != null then securebootKeys.key else null;
-      description = "RSA private key for boot.img signing. null disables secure boot (TODO: not yet implemented).";
-    };
   };
 
   config = lib.mkIf cfg.enable {

@@ -79,7 +79,7 @@ in
     networking = {
       enableIPv6 = lib.mkDefault true;
       firewall = {
-        enable = true;
+        enable = lib.mkDefault true;
         allowedTCPPorts = [ 80 ];
       };
       useDHCP = lib.mkDefault true;
