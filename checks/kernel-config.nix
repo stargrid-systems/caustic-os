@@ -73,10 +73,10 @@ let
   ];
 in
 pkgs.runCommand "kernel-config-check"
-{
-  inherit configfile;
-  options = lib.concatStringsSep " " requiredBuiltins;
-}
+  {
+    inherit configfile;
+    options = lib.concatStringsSep " " requiredBuiltins;
+  }
   ''
     failures=0
     for opt in $options; do
