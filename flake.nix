@@ -281,6 +281,10 @@
           pkgs = systemPkgsFor system;
           inherit self;
         };
+        e2e = import ./checks/e2e-test.nix {
+          pkgs = systemPkgsFor system;
+          inherit self;
+        };
       });
 
       devShells = perSystem (

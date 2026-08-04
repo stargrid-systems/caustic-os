@@ -76,9 +76,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: x86_64
-            runner: ubuntu-26.04
-            nix_system: x86_64-linux
           - arch: aarch64
             runner: ubuntu-26.04-arm
             nix_system: aarch64-linux
@@ -99,6 +96,9 @@ jobs:
 
       - name: Run login test
         run: nix build .#tests.${{ matrix.nix_system }}.login -L
+
+      - name: Run E2E network test
+        run: nix build .#tests.${{ matrix.nix_system }}.e2e -L
 
       - name: Build boot test artifacts
         if: matrix.arch == 'aarch64'
