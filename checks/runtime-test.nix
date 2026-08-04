@@ -24,7 +24,8 @@ pkgs.testers.runNixOSTest {
         self.nixosModules.dropbear
         self.nixosModules.causticOta
         self.nixosModules.persist
-      ] ++ lib.optionals isAarch64 [
+      ]
+      ++ lib.optionals isAarch64 [
         self.nixosModules.kernel
       ];
 
