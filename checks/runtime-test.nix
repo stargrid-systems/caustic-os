@@ -36,30 +36,32 @@ pkgs.testers.runNixOSTest {
         persist.enable = true;
       };
 
-      boot.kernelPackages = lib.mkIf (!isAarch64) pkgs.linuxPackages;
-
       # qemu-vm.nix populates these with x86-only modules (ata_piix, atkbd)
       # and modules that are built-in in our kernel (dm_mod, loop, xhci_pci).
       # Override with only modules that exist as .ko files in our kernel.
-      boot.initrd.availableKernelModules = lib.mkIf isAarch64 (
-        lib.mkForce [
-          "virtio_blk"
-          "virtio_net"
-          "virtio_mmio"
-          "9p"
-          "9pnet_virtio"
-          "virtio_rng"
-        ]
-      );
-      boot.initrd.kernelModules = lib.mkIf isAarch64 (
-        lib.mkForce [
-          "virtio_blk"
-          "virtio_net"
-          "virtio_console"
-          "virtio_rng"
-        ]
-      );
-      boot.kernelModules = lib.mkIf isAarch64 (lib.mkForce [ ]);
+      boot = {
+        kernelPackages = lib.mkIf (!isAarch64) pkgs.linuxPackages;
+
+        initrd.availableKernelModules = lib.mkIf isAarch64 (
+          lib.mkForce [
+            "virtio_blk"
+            "virtio_net"
+            "virtio_mmio"
+            "9p"
+            "9pnet_virtio"
+            "virtio_rng"
+          ]
+        );
+        initrd.kernelModules = lib.mkIf isAarch64 (
+          lib.mkForce [
+            "virtio_blk"
+            "virtio_net"
+            "virtio_console"
+            "virtio_rng"
+          ]
+        );
+        kernelModules = lib.mkIf isAarch64 (lib.mkForce [ ]);
+      };
 
       users.users.root.hashedPassword = null;
 
