@@ -69,7 +69,7 @@ pkgs.testers.runNixOSTest {
 
       system.extraDependencies = realImageBuilds;
 
-      environment.systemPackages = [ pkgs.curl ];
+      environment.systemPackages = [ pkgs.curl pkgs.nftables ];
 
       system.stateVersion = "26.05";
     };

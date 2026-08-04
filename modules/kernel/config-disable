@@ -199,12 +199,6 @@
 # CONFIG_MEGARAID_NEWGEN is not set
 # CONFIG_MEGARAID_SAS is not set
 # CONFIG_SCSI_HISI_SAS is not set
-# CONFIG_SCSI_UFSHCD is not set
-# CONFIG_SATA_AHCI is not set
-# CONFIG_SATA_AHCI_PLATFORM is not set
-# CONFIG_AHCI_BRCM is not set
-# CONFIG_AHCI_DWC is not set
-# CONFIG_AHCI_XGENE is not set
 
 # CONFIG_SERIAL_8250 is not set
 # CONFIG_SERIAL_8250_BCM2835AUX is not set
