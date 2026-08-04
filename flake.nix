@@ -175,7 +175,6 @@
       prodNixosFor =
         system:
         {
-          securebootKeys ? securebootKeysGlobal,
           imageId ? "caustic-os",
           otaRegistry ? "ghcr.io/stargrid-systems/caustic-os",
           extraModules ? [ ],
@@ -183,7 +182,7 @@
         nixpkgs.lib.nixosSystem {
           inherit system;
           specialArgs = {
-            inherit securebootKeys imageId otaRegistry;
+            inherit imageId otaRegistry;
           };
           modules = [
             { nixpkgs.overlays = [ osOverlay ]; }
@@ -199,32 +198,6 @@
           ]
           ++ extraModules;
         };
-
-      securebootKeysGlobal =
-        let
-          keysEnvPath = builtins.getEnv "CAUSTIC_SECUREBOOT_KEYS";
-          keysDir = if keysEnvPath != "" then keysEnvPath else "/usr/share/secureboot/keys/db";
-          keyPath = "${keysDir}/db.key";
-          certPath = "${keysDir}/db.crt";
-        in
-        # In pure eval, getEnv returns "" and the fallback path won't exist,
-        # so this resolves to null. Use --impure with the env var (or rely on
-        # the sbctl default location) to enable signing.
-        # builtins.path copies the key files into the nix store so that
-        # sandboxed derivations (sbsign, ukify) can read them.
-        if keysEnvPath != "" && builtins.pathExists keyPath && builtins.pathExists certPath then
-          {
-            key = builtins.path {
-              path = keyPath;
-              name = "secureboot-db.key";
-            };
-            cert = builtins.path {
-              path = certPath;
-              name = "secureboot-db.crt";
-            };
-          }
-        else
-          null;
     in
     {
       overlays.default = osOverlay;
@@ -244,13 +217,12 @@
         devVm = devNixosFor "x86_64-linux";
         production = prodNixosFor "aarch64-linux" { };
         devImage = prodNixosFor "aarch64-linux" {
-          securebootKeys = null;
           imageId = "caustic-os-dev";
           otaRegistry = "ghcr.io/stargrid-systems/caustic-os-dev";
           extraModules = [
             ({ lib, ... }: {
-              users.users.root.hashedPassword = lib.mkForce "";
-              networking.firewall.enable = lib.mkForce false;
+              users.users.root.hashedPassword = "";
+              networking.firewall.enable = false;
               boot.kernel.sysctl = {
                 "net.ipv4.conf.all.rp_filter" = lib.mkForce 0;
                 "net.ipv4.conf.default.rp_filter" = lib.mkForce 0;
@@ -301,14 +273,6 @@
           kernel-config = import ./checks/kernel-config.nix {
             inherit
               pkgs
-              lib
-              ;
-          };
-          dev-image = import ./checks/dev-image.nix {
-            inherit
-              pkgs
-              self
-              nixpkgs
               lib
               ;
           };
