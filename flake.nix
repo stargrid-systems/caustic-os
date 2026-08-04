@@ -212,6 +212,7 @@
         persist = import ./modules/persist { inherit impermanence; };
         nativeBoot = import ./modules/boot/default.nix;
         kernel = import ./modules/kernel/default.nix;
+        dev-access = import ./modules/dev-access.nix;
       };
 
       nixosConfigurations = {
@@ -220,16 +221,7 @@
         devImage = prodNixosFor "aarch64-linux" {
           imageId = "caustic-os-dev";
           otaRegistry = "ghcr.io/stargrid-systems/caustic-os-dev";
-          extraModules = [
-            ({ lib, ... }: {
-              users.users.root.hashedPassword = "";
-              networking.firewall.enable = false;
-              boot.kernel.sysctl = {
-                "net.ipv4.conf.all.rp_filter" = lib.mkForce 0;
-                "net.ipv4.conf.default.rp_filter" = lib.mkForce 0;
-              };
-            })
-          ];
+          extraModules = [ self.nixosModules.dev-access ];
         };
       };
 
@@ -282,6 +274,10 @@
 
       tests = perSystem (system: {
         runtime = import ./checks/runtime-test.nix {
+          pkgs = systemPkgsFor system;
+          inherit self;
+        };
+        login = import ./checks/login-test.nix {
           pkgs = systemPkgsFor system;
           inherit self;
         };

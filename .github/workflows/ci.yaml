@@ -97,6 +97,9 @@ jobs:
       - name: Run NixOS test
         run: nix build .#tests.${{ matrix.nix_system }}.runtime -L
 
+      - name: Run login test
+        run: nix build .#tests.${{ matrix.nix_system }}.login -L
+
       - name: Build boot test artifacts
         if: matrix.arch == 'aarch64'
         run: |
