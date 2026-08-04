@@ -117,6 +117,7 @@ jobs:
       - name: Build artifacts
         run: |
           nix build --no-link \
+            .#checks.aarch64-linux.kernel-config \
             .#nixosConfigurations.production.config.boot.kernelPackages.kernel \
             .#nixosConfigurations.production.config.system.build.verityArtifacts \
             .#nixosConfigurations.production.config.system.build.diskImage \
@@ -179,6 +180,19 @@ jobs:
           else
             echo "::error::QEMU boot test FAILED: boot chain did not complete"
             exit 1
+          fi
+
+          echo "=== Checking for network driver ==="
+          if grep -q "bcmgenet" qemu-output.log 2>/dev/null; then
+            echo "::notice::bcmgenet driver loaded"
+          else
+            echo "::warning::bcmgenet driver not found in boot output"
+          fi
+
+          if grep -qi "Link is Up" qemu-output.log 2>/dev/null; then
+            echo "::notice::Network link is up"
+          else
+            echo "::warning::No 'Link is Up' message found"
           fi
 
   ci-pass:
