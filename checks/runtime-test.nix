@@ -38,6 +38,8 @@ pkgs.testers.runNixOSTest {
 
       boot.kernelPackages = lib.mkIf (!isAarch64) pkgs.linuxPackages;
       boot.initrd.availableKernelModules = lib.mkIf isAarch64 (lib.mkForce [ ]);
+      boot.initrd.kernelModules = lib.mkIf isAarch64 (lib.mkForce [ ]);
+      boot.kernelModules = lib.mkIf isAarch64 (lib.mkForce [ ]);
 
       users.users.root.hashedPassword = null;
 
