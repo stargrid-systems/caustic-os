@@ -30,10 +30,10 @@ let
       ];
     }).config;
 in
-assert lib.assertMsg (cfg.users.users.root.hashedPassword == "")
-  "devImage: root.hashedPassword must be empty for passwordless login";
-assert lib.assertMsg (!cfg.networking.firewall.enable)
-  "devImage: firewall must be disabled";
+assert lib.assertMsg (
+  cfg.users.users.root.hashedPassword == ""
+) "devImage: root.hashedPassword must be empty for passwordless login";
+assert lib.assertMsg (!cfg.networking.firewall.enable) "devImage: firewall must be disabled";
 assert lib.assertMsg (
   cfg.boot.kernel.sysctl."net.ipv4.conf.all.rp_filter" == 0
 ) "devImage: rp_filter must be 0";
