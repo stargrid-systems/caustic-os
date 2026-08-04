@@ -35,27 +35,27 @@ in
       ];
 
       kernel.sysctl = {
-        "kernel.kptr_restrict" = lib.mkDefault 2;
-        "kernel.dmesg_restrict" = lib.mkDefault 1;
-        "kernel.perf_event_paranoid" = lib.mkDefault 2;
-        "kernel.unprivileged_bpf_disabled" = lib.mkDefault 1;
-        "kernel.sysrq" = lib.mkDefault 0;
-        "kernel.yama.ptrace_scope" = lib.mkDefault 2;
+        "kernel.kptr_restrict" = 2;
+        "kernel.dmesg_restrict" = 1;
+        "kernel.perf_event_paranoid" = 2;
+        "kernel.unprivileged_bpf_disabled" = 1;
+        "kernel.sysrq" = 0;
+        "kernel.yama.ptrace_scope" = 2;
 
-        "net.ipv4.conf.all.rp_filter" = lib.mkDefault 2;
-        "net.ipv4.conf.default.rp_filter" = lib.mkDefault 2;
-        "net.ipv4.conf.all.accept_redirects" = lib.mkDefault 0;
-        "net.ipv4.conf.default.accept_redirects" = lib.mkDefault 0;
-        "net.ipv4.conf.all.send_redirects" = lib.mkDefault 0;
-        "net.ipv4.conf.default.send_redirects" = lib.mkDefault 0;
-        "net.ipv4.conf.all.accept_source_route" = lib.mkDefault 0;
-        "net.ipv4.conf.default.accept_source_route" = lib.mkDefault 0;
-        "net.ipv4.tcp_syncookies" = lib.mkDefault 1;
+        "net.ipv4.conf.all.rp_filter" = 2;
+        "net.ipv4.conf.default.rp_filter" = 2;
+        "net.ipv4.conf.all.accept_redirects" = 0;
+        "net.ipv4.conf.default.accept_redirects" = 0;
+        "net.ipv4.conf.all.send_redirects" = 0;
+        "net.ipv4.conf.default.send_redirects" = 0;
+        "net.ipv4.conf.all.accept_source_route" = 0;
+        "net.ipv4.conf.default.accept_source_route" = 0;
+        "net.ipv4.tcp_syncookies" = 1;
 
-        "net.ipv6.conf.all.accept_ra" = lib.mkDefault 0;
-        "net.ipv6.conf.default.accept_ra" = lib.mkDefault 0;
-        "net.ipv6.conf.all.accept_redirects" = lib.mkDefault 0;
-        "net.ipv6.conf.default.accept_redirects" = lib.mkDefault 0;
+        "net.ipv6.conf.all.accept_ra" = 0;
+        "net.ipv6.conf.default.accept_ra" = 0;
+        "net.ipv6.conf.all.accept_redirects" = 0;
+        "net.ipv6.conf.default.accept_redirects" = 0;
       };
     };
 
