@@ -298,6 +298,20 @@
               lib
               ;
           };
+          kernel-config = import ./checks/kernel-config.nix {
+            inherit
+              pkgs
+              lib
+              ;
+          };
+          dev-image = import ./checks/dev-image.nix {
+            inherit
+              pkgs
+              self
+              nixpkgs
+              lib
+              ;
+          };
         }
       );
 
