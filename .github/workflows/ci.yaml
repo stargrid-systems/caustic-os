@@ -97,6 +97,9 @@ jobs:
       - name: Run login test
         run: nix build .#tests.${{ matrix.nix_system }}.login -L
 
+      - name: Run E2E network test
+        run: nix build .#tests.${{ matrix.nix_system }}.e2e -L
+
       - name: Build boot test artifacts
         run: |
           nix build --no-link \

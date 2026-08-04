@@ -64,7 +64,10 @@ in
     };
 
     services = {
-      aperture.enable = true;
+      aperture = {
+        enable = true;
+        httpsAddr = "[::]:443";
+      };
       caustic-ota.enable = true;
 
       avahi = {
@@ -80,7 +83,10 @@ in
       enableIPv6 = lib.mkDefault true;
       firewall = {
         enable = lib.mkDefault true;
-        allowedTCPPorts = [ 80 ];
+        allowedTCPPorts = [
+          80
+          443
+        ];
       };
       useDHCP = lib.mkDefault true;
     };
