@@ -57,7 +57,7 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  nodes.caustic = { pkgs, ... }: {
+  nodes.caustic = { ... }: {
     imports = [
       self.nixosModules.caustic
       self.nixosModules.kernel
