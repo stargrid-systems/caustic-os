@@ -78,12 +78,13 @@
 
       fetchCargoVendorOverlay = _final: prev: {
         fetch-cargo-vendor-util = prev.runCommand "fetch-cargo-vendor-util"
-          { nativeBuildInputs = [ prev.makeWrapper ]; }
+          { }
           ''
             mkdir -p $out/bin
-            makeWrapper ${prev.fetch-cargo-vendor-util}/bin/fetch-cargo-vendor-util \
-              $out/bin/fetch-cargo-vendor-util \
-              --prefix PYTHONPATH : ${prev.python3Packages.requests}/${prev.python3.sitePackages}
+            sed '2 i import sys; sys.path.insert(0, "${prev.python3Packages.requests}/${prev.python3.sitePackages}")' \
+              ${prev.fetch-cargo-vendor-util}/bin/fetch-cargo-vendor-util \
+              > $out/bin/fetch-cargo-vendor-util
+            chmod +x $out/bin/fetch-cargo-vendor-util
           '';
       };
 
