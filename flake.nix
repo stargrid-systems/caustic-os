@@ -81,9 +81,11 @@
           { }
           ''
             mkdir -p $out/bin
-            sed '2 i import sys; sys.path.insert(0, "${prev.python3Packages.requests}/${prev.python3.sitePackages}")' \
-              ${prev.fetch-cargo-vendor-util}/bin/fetch-cargo-vendor-util \
-              > $out/bin/fetch-cargo-vendor-util
+            cat > $out/bin/fetch-cargo-vendor-util << 'WRAPPER'
+            #!${prev.bash}/bin/bash
+            export NIX_PYTHONPATH="${prev.python3Packages.requests}/${prev.python3.sitePackages}"
+            exec ${prev.fetch-cargo-vendor-util}/bin/fetch-cargo-vendor-util "$@"
+            WRAPPER
             chmod +x $out/bin/fetch-cargo-vendor-util
           '';
       };
