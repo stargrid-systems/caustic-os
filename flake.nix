@@ -76,34 +76,18 @@
         });
       };
 
-      fetchCargoVendorOverlay = _final: prev: {
-        fetch-cargo-vendor-util = prev.runCommand "fetch-cargo-vendor-util"
-          { }
-          ''
-            mkdir -p $out/bin
-            cat > $out/bin/fetch-cargo-vendor-util << 'WRAPPER'
-            #!${prev.bash}/bin/bash
-            export NIX_PYTHONPATH="${prev.python3Packages.requests}/${prev.python3.sitePackages}"
-            exec ${prev.fetch-cargo-vendor-util}/bin/fetch-cargo-vendor-util "$@"
-            WRAPPER
-            chmod +x $out/bin/fetch-cargo-vendor-util
-          '';
-      };
-
       pkgsFor =
         system:
         import nixpkgs {
           inherit system;
-          overlays = baseOverlays
-            ++ lib.optional (system == "aarch64-linux") autoPatchelfOverlay
-            ++ lib.optional (system == "aarch64-linux") fetchCargoVendorOverlay;
+          overlays = baseOverlays ++ lib.optional (system == "aarch64-linux") autoPatchelfOverlay;
         };
 
       systemPkgsFor =
         system:
         import nixpkgs {
           inherit system;
-          overlays = baseOverlays ++ lib.optional (system == "aarch64-linux") fetchCargoVendorOverlay;
+          overlays = baseOverlays;
         };
 
       treefmtModule = {
@@ -148,7 +132,6 @@
           inherit (crateName) version;
           strictDeps = true;
           doCheck = false;
-          auditable = false;
         };
 
       causticOtaFor =

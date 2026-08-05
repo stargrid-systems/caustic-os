@@ -24,10 +24,10 @@ in
     };
 
     httpsAddr = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      example = "[::]:443";
-      description = "HTTPS listener address. null disables HTTPS.";
+      type = lib.types.str;
+      default = "[::]:443";
+      example = "[::]:8443";
+      description = "HTTPS listener address.";
     };
 
     dataDir = lib.mkOption {
@@ -59,20 +59,16 @@ in
         Group = "aperture";
         StateDirectory = "aperture";
         RuntimeDirectory = "aperture";
-        ExecStart = builtins.concatStringsSep " " (
-          [
-            (lib.getExe' cfg.package "aperture")
-            "run"
-            "--http-addr"
-            cfg.httpAddr
-            "--data-dir"
-            cfg.dataDir
-          ]
-          ++ lib.optionals (cfg.httpsAddr != null) [
-            "--https-addr"
-            cfg.httpsAddr
-          ]
-        );
+        ExecStart = builtins.concatStringsSep " " [
+          (lib.getExe' cfg.package "aperture")
+          "run"
+          "--http-addr"
+          cfg.httpAddr
+          "--https-addr"
+          cfg.httpsAddr
+          "--data-dir"
+          cfg.dataDir
+        ];
         Restart = "on-failure";
         RestartSec = "5s";
 
@@ -105,5 +101,10 @@ in
         CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
       };
     };
+
+    networking.firewall.allowedTCPPorts = [
+      80
+      443
+    ];
   };
 }

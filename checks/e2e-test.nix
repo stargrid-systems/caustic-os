@@ -88,7 +88,6 @@ pkgs.testers.runNixOSTest {
       aperture = {
         enable = true;
         package = self.packages.${system}.aperture;
-        httpsAddr = "[::]:443";
       };
       dropbear = {
         enable = true;
@@ -99,10 +98,6 @@ pkgs.testers.runNixOSTest {
     networking = {
       useDHCP = lib.mkForce true;
       interfaces.eth0.ipv4.addresses = lib.mkForce [ ];
-      firewall.allowedTCPPorts = [
-        80
-        443
-      ];
     };
 
     system.activationScripts.authorizedKeys = ''
