@@ -65,6 +65,13 @@ pkgs.testers.runNixOSTest {
       self.nixosModules.dropbear
     ];
 
+    boot.initrd.availableKernelModules = lib.mkForce [
+      "virtio_pci"
+      "virtio_blk"
+      "virtio_net"
+      "virtio_console"
+    ];
+
     virtualisation = {
       vlans = [ 1 ];
       cores = 2;
