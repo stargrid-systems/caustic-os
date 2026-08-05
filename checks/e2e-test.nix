@@ -60,12 +60,13 @@ pkgs.testers.runNixOSTest {
   nodes.caustic = { ... }: {
     imports = [
       self.nixosModules.caustic
-      self.nixosModules.kernel
       self.nixosModules.aperture
       self.nixosModules.dropbear
+    ] ++ lib.optionals (system == "aarch64-linux") [
+      self.nixosModules.kernel
     ];
 
-    boot.initrd = {
+    boot.initrd = lib.mkIf (system == "aarch64-linux") {
       availableKernelModules = lib.mkForce [
         "virtio_pci"
         "virtio_blk"
