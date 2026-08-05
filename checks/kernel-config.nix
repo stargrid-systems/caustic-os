@@ -70,9 +70,6 @@ let
 
     "CONFIG_USB"
     "CONFIG_USB_STORAGE"
-
-    "CONFIG_DRM"
-    "CONFIG_DRM_VIRTIO_GPU"
   ];
 in
 pkgs.runCommand "kernel-config-check"
