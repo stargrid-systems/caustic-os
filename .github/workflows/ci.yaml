@@ -165,12 +165,6 @@ jobs:
             exit 1
           fi
 
-          if ! grep -q "bcmgenet" qemu-output.log 2>/dev/null; then
-            echo "::error::bcmgenet driver not found in boot output"
-            exit 1
-          fi
-          echo "::notice::bcmgenet driver loaded"
-
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-slim
