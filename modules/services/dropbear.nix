@@ -59,6 +59,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    environment.etc."dropbear".source = stateDir;
+
     systemd.services.dropbear = {
       description = "Dropbear SSH server";
       wantedBy = [ "multi-user.target" ];
