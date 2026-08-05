@@ -5,18 +5,6 @@
 let
   inherit (pkgs) lib;
   inherit (pkgs.stdenv.hostPlatform) system;
-
-  testPrivKey = pkgs.writeText "e2e-test-key" ''
-    -----BEGIN OPENSSH PRIVATE KEY-----
-    b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-    QyNTUxOQAAACBBesLOYSOkM3vsk+8qqLn2VGMfgnZsQ23tJ0DleagayQAAAJhdX7HhXV+x
-    4QAAAAtzc2gtZWQyNTUxOQAAACBBesLOYSOkM3vsk+8qqLn2VGMfgnZsQ23tJ0DleagayQ
-    AAAEAh5ONfGceiW3I0xjIQSmAZizjDHoGPIur9PGQCs0NpckF6ws5hI6Qze+yT7yqoufZU
-    Yx+CdmxDbe0nQOV5qBrJAAAAEGNhdXN0aWMtZTJlLXRlc3QBAgMEBQ==
-    -----END OPENSSH PRIVATE KEY-----
-  '';
-
-  testPubKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEF6ws5hI6Qze+yT7yqoufZUYx+CdmxDbe0nQOV5qBrJ caustic-e2e-test";
 in
 pkgs.testers.runNixOSTest {
   name = "caustic-e2e-test";
@@ -48,22 +36,20 @@ pkgs.testers.runNixOSTest {
       };
     };
 
-    environment = {
-      systemPackages = [
-        pkgs.curl
-        pkgs.openssh
-      ];
-      etc."ssh/test_key".source = "${testPrivKey}";
-    };
+    environment.systemPackages = [
+      pkgs.curl
+      pkgs.sshpass
+    ];
   };
 
-  nodes.caustic = { ... }: {
+  nodes.caustic = { pkgs, ... }: {
     imports = [
       self.nixosModules.caustic
       self.nixosModules.aperture
       self.nixosModules.dropbear
-      self.nixosModules.kernel
     ];
+
+    boot.kernelPackages = pkgs.linuxPackages;
 
     virtualisation = {
       vlans = [ 1 ];
@@ -77,6 +63,8 @@ pkgs.testers.runNixOSTest {
       users.enable = true;
     };
 
+    users.users.root.hashedPassword = "";
+
     services = {
       aperture = {
         enable = true;
@@ -86,6 +74,8 @@ pkgs.testers.runNixOSTest {
       dropbear = {
         enable = true;
         allowRootLogin = true;
+        allowPasswordAuth = true;
+        allowEmptyPasswords = true;
       };
     };
 
@@ -97,8 +87,6 @@ pkgs.testers.runNixOSTest {
         443
       ];
     };
-
-    users.users.root.openssh.authorizedKeys.keys = [ testPubKey ];
 
     system.stateVersion = "26.05";
   };
@@ -118,7 +106,7 @@ pkgs.testers.runNixOSTest {
 
     with subtest("SSH from router to caustic"):
         router.succeed(
-            f"ssh -i /etc/ssh/test_key -o StrictHostKeyChecking=no "
+            f"sshpass -p ''' ssh -o StrictHostKeyChecking=no "
             f"-o UserKnownHostsFile=/dev/null root@{ip} 'echo SSH_OK'"
         )
 
