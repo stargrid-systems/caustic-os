@@ -12,7 +12,7 @@ let
   ];
 in
 pkgs.testers.runNixOSTest {
-  name = "caustic-runtime";
+  name = "caustic-test";
 
   nodes.machine =
     { pkgs, ... }:
@@ -34,7 +34,7 @@ pkgs.testers.runNixOSTest {
 
       boot.kernelPackages = pkgs.linuxPackages;
 
-      users.users.root.hashedPassword = pkgs.lib.mkForce null;
+      users.users.root.hashedPassword = null;
 
       services = {
         aperture = {
@@ -65,7 +65,10 @@ pkgs.testers.runNixOSTest {
 
       system.extraDependencies = realImageBuilds;
 
-      environment.systemPackages = [ pkgs.curl ];
+      environment.systemPackages = [
+        pkgs.curl
+        pkgs.nftables
+      ];
 
       system.stateVersion = "26.05";
     };
@@ -91,5 +94,17 @@ pkgs.testers.runNixOSTest {
           machine.succeed("echo survived > /var/lib/aperture/persist-test")
           machine.succeed("test -f /persist/var/lib/aperture/persist-test")
           assert "survived" in machine.succeed("cat /persist/var/lib/aperture/persist-test")
+
+      with subtest("firewall is active with nftables rules"):
+          machine.wait_for_unit("firewall.service")
+          machine.succeed("nft list ruleset")
+
+      with subtest("IPv6 is enabled"):
+          machine.succeed("ip -6 addr show dev lo | grep -q inet6")
+
+      with subtest("sysctl hardening is applied"):
+          assert "2" in machine.succeed("cat /proc/sys/kernel/kptr_restrict")
+          assert "1" in machine.succeed("cat /proc/sys/kernel/dmesg_restrict")
+          assert "0" in machine.succeed("cat /proc/sys/kernel/sysrq")
     '';
 }

@@ -68,17 +68,14 @@ jobs:
       - name: Evaluate flake for aarch64-linux
         run: nix flake show
 
-  runtime-test:
-    name: Runtime test (${{ matrix.arch }})
+  test:
+    name: Test (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x86_64
-            runner: ubuntu-26.04
-            nix_system: x86_64-linux
           - arch: aarch64
             runner: ubuntu-26.04-arm
             nix_system: aarch64-linux
@@ -94,27 +91,13 @@ jobs:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
           kvm: true
 
-      - name: Run runtime test
+      - name: Run NixOS test
         run: nix build .#tests.${{ matrix.nix_system }}.runtime -L
 
-  boot-test:
-    name: Boot test (QEMU)
-    runs-on: ubuntu-26.04-arm
-    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
+      - name: Run login test
+        run: nix build .#tests.${{ matrix.nix_system }}.login -L
 
-      - name: Setup Nix
-        uses: ./.github/actions/setup-nix
-        with:
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-          kvm: true
-          save: false
-
-      - name: Build artifacts
+      - name: Build boot test artifacts
         run: |
           nix build --no-link \
             .#checks.aarch64-linux.kernel-config \
@@ -182,34 +165,20 @@ jobs:
             exit 1
           fi
 
-          echo "=== Checking for network driver ==="
-          if grep -q "bcmgenet" qemu-output.log 2>/dev/null; then
-            echo "::notice::bcmgenet driver loaded"
-          else
-            echo "::warning::bcmgenet driver not found in boot output"
-          fi
-
-          if grep -qi "Link is Up" qemu-output.log 2>/dev/null; then
-            echo "::notice::Network link is up"
-          else
-            echo "::warning::No 'Link is Up' message found"
-          fi
-
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-slim
     if: always()
-    needs: [quick-checks, rust, build-images, runtime-test, boot-test]
+    needs: [quick-checks, rust, build-images, test]
     steps:
       - name: Evaluate job results
         env:
           QUICK_CHECKS: ${{ needs.quick-checks.result }}
           RUST: ${{ needs.rust.result }}
           BUILD_IMAGES: ${{ needs.build-images.result }}
-          RUNTIME_TEST: ${{ needs.runtime-test.result }}
-          BOOT_TEST: ${{ needs.boot-test.result }}
+          TEST: ${{ needs.test.result }}
         run: |
-          for name in QUICK_CHECKS RUST BUILD_IMAGES RUNTIME_TEST BOOT_TEST; do
+          for name in QUICK_CHECKS RUST BUILD_IMAGES TEST; do
             result="${!name}"
             echo "$name: $result"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
