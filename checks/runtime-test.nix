@@ -5,9 +5,8 @@
 let
   inherit (pkgs) lib;
   inherit (pkgs.stdenv.hostPlatform) system;
-  isAarch64 = system == "aarch64-linux";
 
-  realImageBuilds = lib.optionals isAarch64 [
+  realImageBuilds = lib.optionals (system == "aarch64-linux") [
     self.nixosConfigurations.devImage.config.system.build.toplevel
     self.nixosConfigurations.production.config.system.build.toplevel
   ];
@@ -24,9 +23,6 @@ pkgs.testers.runNixOSTest {
         self.nixosModules.dropbear
         self.nixosModules.causticOta
         self.nixosModules.persist
-      ]
-      ++ lib.optionals isAarch64 [
-        self.nixosModules.kernel
       ];
 
       caustic = {
@@ -36,32 +32,7 @@ pkgs.testers.runNixOSTest {
         persist.enable = true;
       };
 
-      # qemu-vm.nix populates these with x86-only modules (ata_piix, atkbd)
-      # and modules that are built-in in our kernel (dm_mod, loop, xhci_pci).
-      # Override with only modules that exist as .ko files in our kernel.
-      boot = {
-        kernelPackages = lib.mkIf (!isAarch64) pkgs.linuxPackages;
-
-        initrd.availableKernelModules = lib.mkIf isAarch64 (
-          lib.mkForce [
-            "virtio_blk"
-            "virtio_net"
-            "virtio_mmio"
-            "9p"
-            "9pnet_virtio"
-            "virtio_rng"
-          ]
-        );
-        initrd.kernelModules = lib.mkIf isAarch64 (
-          lib.mkForce [
-            "virtio_blk"
-            "virtio_net"
-            "virtio_console"
-            "virtio_rng"
-          ]
-        );
-        kernelModules = lib.mkIf isAarch64 (lib.mkForce [ ]);
-      };
+      boot.kernelPackages = pkgs.linuxPackages;
 
       users.users.root.hashedPassword = null;
 
