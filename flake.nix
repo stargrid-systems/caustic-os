@@ -76,18 +76,31 @@
         });
       };
 
+      fetchCargoVendorOverlay = _final: prev: {
+        fetch-cargo-vendor-util = prev.runCommand "fetch-cargo-vendor-util"
+          { nativeBuildInputs = [ prev.makeWrapper ]; }
+          ''
+            mkdir -p $out/bin
+            makeWrapper ${prev.fetch-cargo-vendor-util}/bin/fetch-cargo-vendor-util \
+              $out/bin/fetch-cargo-vendor-util \
+              --prefix PYTHONPATH : ${prev.python3Packages.requests}/${prev.python3.sitePackages}
+          '';
+      };
+
       pkgsFor =
         system:
         import nixpkgs {
           inherit system;
-          overlays = baseOverlays ++ lib.optional (system == "aarch64-linux") autoPatchelfOverlay;
+          overlays = baseOverlays
+            ++ lib.optional (system == "aarch64-linux") autoPatchelfOverlay
+            ++ lib.optional (system == "aarch64-linux") fetchCargoVendorOverlay;
         };
 
       systemPkgsFor =
         system:
         import nixpkgs {
           inherit system;
-          overlays = baseOverlays;
+          overlays = baseOverlays ++ lib.optional (system == "aarch64-linux") fetchCargoVendorOverlay;
         };
 
       treefmtModule = {
@@ -132,6 +145,7 @@
           inherit (crateName) version;
           strictDeps = true;
           doCheck = false;
+          auditable = false;
         };
 
       causticOtaFor =
