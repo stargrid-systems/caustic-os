@@ -6,6 +6,16 @@
 }:
 let
   cfg = config.caustic.persist;
+
+  directories = [
+    "/var/lib/aperture"
+    "/var/lib/caustic-ota"
+    "/var/lib/dropbear"
+    "/var/lib/nixos"
+    "/var/lib/systemd"
+    "/var/log/journal"
+    "/nix/var/nix"
+  ];
 in
 {
   imports = [ impermanence.nixosModules.impermanence ];
@@ -17,14 +27,7 @@ in
   config = lib.mkIf cfg.enable {
     environment.persistence."/persist" = {
       hideMounts = true;
-      directories = [
-        "/var/lib/aperture"
-        "/var/lib/caustic-ota"
-        "/var/lib/dropbear"
-        "/var/lib/nixos"
-        "/var/log/journal"
-        "/nix/var/nix"
-      ];
+      inherit directories;
       files = [ "/etc/machine-id" ];
     };
   };
