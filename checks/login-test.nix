@@ -47,11 +47,9 @@ pkgs.testers.runNixOSTest {
         )
 
     with subtest("serial-getty has auto-login for root"):
-        _, ls_output = machine.execute("ls /etc/systemd/system/")
-        _, grep_output = machine.execute("grep -rl 'autologin root' /etc/systemd/ 2>/dev/null")
-        assert "autologin root" in grep_output or "serial-getty" in grep_output, (
-            f"autologin root not found in systemd units. "
-            f"systemd units: {ls_output}"
+        _, content = machine.execute("cat /etc/systemd/system/serial-getty@ttyAMA0.service 2>&1")
+        assert "autologin root" in content, (
+            f"serial-getty@ttyAMA0.service missing autologin root. Content:\n{content}"
         )
   '';
 }
