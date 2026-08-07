@@ -268,6 +268,13 @@
               lib
               ;
           };
+          dt-overlay = import ./checks/dt-overlay-check.nix {
+            inherit
+              pkgs
+              self
+              lib
+              ;
+          };
         }
       );
 

@@ -37,6 +37,8 @@ in
 
     hardware.deviceTree.enable = true;
 
+    hardware.caustic.cm4PoeUps.enable = true;
+
     fileSystems = {
       "/boot/a" = {
         device = "/dev/mmcblk0p1";

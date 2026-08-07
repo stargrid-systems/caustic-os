@@ -12,6 +12,22 @@ let
   imageId = config.system.image.id;
   toplevel = config.system.build.toplevel;
 
+  dtOverlays = config.hardware.deviceTree.overlays;
+
+  compiledOverlays = map (o:
+    pkgs.runCommand "${o.name}.dtbo" {
+      nativeBuildInputs = [ pkgs.dtc ];
+    } ''
+      dtc -I dts -O dtb -@ -o $out ${
+        if o ? dtsFile
+        then toString o.dtsFile
+        else pkgs.writeText "${o.name}.dts" o.dtsText
+      }
+    ''
+  ) dtOverlays;
+
+  overlayLines = map (o: "dtoverlay=${o.name}") dtOverlays;
+
   allKernelParams = lib.concatStringsSep " " config.boot.kernelParams;
 
   initrd = config.system.build.initialRamdisk;
@@ -92,6 +108,7 @@ let
     disable_overscan=1
     gpu_mem=16
     dtoverlay=miniuart-bt
+    ${lib.concatStringsSep "\n" overlayLines}
     kernel=Image
     initramfs initrd followkernel
     cmdline=cmdline.txt
@@ -123,6 +140,7 @@ let
         cp ${rpiFw}/share/raspberrypi/boot/fixup.dat $out/
         cp ${rpiFw}/share/raspberrypi/boot/bcm2711-rpi-cm4.dtb $out/
         cp ${rpiFw}/share/raspberrypi/boot/overlays/miniuart-bt.dtbo $out/overlays/
+        ${lib.concatStringsSep "\n" (map (dtbo: "cp ${dtbo} $out/overlays/") compiledOverlays)}
 
         source ${verityArtifacts}/verity.txt
         sectors=$(( data_blocks * 8 ))
