@@ -300,51 +300,53 @@ in
       ];
     };
 
-    systemd.settings.Manager = {
-      RuntimeWatchdogSec = "off";
-      ShutdownWatchdogSec = "10min";
-    };
-
-    systemd.services.reset-reason = {
-      description = "Log BCM2711 reset reason from Device Tree";
-      wantedBy = [ "sysinit.target" ];
-      after = [ "systemd-journald.service" ];
-      before = [ "sysinit.target" ];
-      unitConfig.DefaultDependencies = false;
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        StandardOutput = "journal+console";
+    systemd = {
+      settings.Manager = {
+        RuntimeWatchdogSec = "off";
+        ShutdownWatchdogSec = "10min";
       };
-      script = ''
-        rsts_hex=$(od -An -tx1 /proc/device-tree/chosen/bootloader/rsts 2>/dev/null | tr -d ' \n')
-        if [ -n "$rsts_hex" ]; then
-          rsts=$((0x$rsts_hex))
-          echo "PM_RSTS=0x$(printf '%08x' $rsts)"
-          if [ $((rsts & 64)) -ne 0 ]; then
-            echo "RESET_REASON=watchdog"
-          elif [ $((rsts & 32)) -ne 0 ]; then
-            echo "RESET_REASON=software_reboot"
-          else
-            echo "RESET_REASON=power_or_hard_reset"
-          fi
-        else
-          echo "RESET_REASON=unknown (DT property not found)"
-        fi
-      '';
-    };
 
-    systemd.services.console-heartbeat = {
-      description = "Serial console heartbeat for boot loop diagnosis";
-      wantedBy = [ "basic.target" ];
-      after = [ "systemd-journald.service" ];
-      serviceConfig.Type = "simple";
-      script = ''
-        while true; do
-          echo "HEARTBEAT uptime=$(cut -d' ' -f1 /proc/uptime)" > /dev/ttyAMA0
-          sleep 5
-        done
-      '';
+      services.reset-reason = {
+        description = "Log BCM2711 reset reason from Device Tree";
+        wantedBy = [ "sysinit.target" ];
+        after = [ "systemd-journald.service" ];
+        before = [ "sysinit.target" ];
+        unitConfig.DefaultDependencies = false;
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          StandardOutput = "journal+console";
+        };
+        script = ''
+          rsts_hex=$(od -An -tx1 /proc/device-tree/chosen/bootloader/rsts 2>/dev/null | tr -d ' \n')
+          if [ -n "$rsts_hex" ]; then
+            rsts=$((0x$rsts_hex))
+            echo "PM_RSTS=0x$(printf '%08x' $rsts)"
+            if [ $((rsts & 64)) -ne 0 ]; then
+              echo "RESET_REASON=watchdog"
+            elif [ $((rsts & 32)) -ne 0 ]; then
+              echo "RESET_REASON=software_reboot"
+            else
+              echo "RESET_REASON=power_or_hard_reset"
+            fi
+          else
+            echo "RESET_REASON=unknown (DT property not found)"
+          fi
+        '';
+      };
+
+      services.console-heartbeat = {
+        description = "Serial console heartbeat for boot loop diagnosis";
+        wantedBy = [ "basic.target" ];
+        after = [ "systemd-journald.service" ];
+        serviceConfig.Type = "simple";
+        script = ''
+          while true; do
+            echo "HEARTBEAT uptime=$(cut -d' ' -f1 /proc/uptime)" > /dev/ttyAMA0
+            sleep 5
+          done
+        '';
+      };
     };
 
     fileSystems = {
