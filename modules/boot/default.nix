@@ -18,9 +18,12 @@ let
     o:
     let
       src =
-        if o.dtsFile != null then o.dtsFile
-        else if o.dtsText != null then pkgs.writeText "${o.name}.dts" o.dtsText
-        else throw "overlay ${o.name} has neither dtsFile nor dtsText";
+        if o.dtsFile != null then
+          o.dtsFile
+        else if o.dtsText != null then
+          pkgs.writeText "${o.name}.dts" o.dtsText
+        else
+          throw "overlay ${o.name} has neither dtsFile nor dtsText";
     in
     pkgs.runCommand "${o.name}.dtbo" { nativeBuildInputs = [ pkgs.dtc ]; } ''
       dtc -I dts -O dtb -@ -o $out ${src}
