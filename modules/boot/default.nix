@@ -43,10 +43,6 @@ let
         xargs -I % cp -a --reflink=auto % -t $rootDir/nix/store/ < ${closureInfo}/store-paths
 
         ln -sf ${toplevel} $rootDir/nix/var/nix/profiles/system
-        ln -sf /run/current-system/sw/bin $rootDir/bin
-        ln -sf /run/current-system/sw/sbin $rootDir/sbin
-        ln -sf /run/current-system/sw/lib $rootDir/lib
-        ln -sf /run/current-system/sw/lib64 $rootDir/lib64
         ln -sf /run/lock $rootDir/var/lock
         ln -sf /run $rootDir/var/run
 
