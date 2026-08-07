@@ -290,7 +290,7 @@ in
     };
 
     systemd.settings.Manager = {
-      RuntimeWatchdogSec = "10s";
+      RuntimeWatchdogSec = "30s";
       ShutdownWatchdogSec = "10min";
     };
 
