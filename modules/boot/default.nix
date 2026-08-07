@@ -47,7 +47,6 @@ let
         ln -sf /run $rootDir/var/run
 
         cp -rs ${config.system.build.etc}/etc/. $rootDir/etc/
-        ${pkgs.systemd}/bin/systemd-machine-id-setup --root $rootDir --print 2>/dev/null || true
 
         SOURCE_DATE_EPOCH=0 mksquashfs $rootDir $out \
           -all-root -no-hardlinks \
