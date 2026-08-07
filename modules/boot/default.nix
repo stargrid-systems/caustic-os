@@ -14,20 +14,10 @@ let
 
   allKernelParams = lib.concatStringsSep " " config.boot.kernelParams;
 
-  initScript = pkgs.writeShellScript "nixos-init" ''
-    echo "caustic-init: mounting /run"
-    ${pkgs.util-linux}/bin/mount -t tmpfs tmpfs /run
-    echo "caustic-init: linking current-system"
-    ${pkgs.coreutils}/bin/ln -sf ${toplevel} /run/current-system
-    echo "caustic-init: starting systemd"
-    exec ${toplevel}/sw/lib/systemd/systemd
-  '';
+  initrd = config.system.build.initialRamdisk;
 
   closureInfo = pkgs.buildPackages.closureInfo {
-    rootPaths = [
-      toplevel
-      initScript
-    ];
+    rootPaths = [ toplevel ];
   };
 
   rootSquashfs =
@@ -44,7 +34,11 @@ let
           $rootDir/etc \
           $rootDir/boot/a \
           $rootDir/boot/b \
-          $rootDir/{run,tmp,var,dev,proc,sys,persist,home,mnt,opt,srv}
+          $rootDir/{run,tmp,var,dev,proc,sys,persist,home,mnt,opt,srv,root} \
+          $rootDir/var/lib/{aperture,caustic-ota,dropbear,nixos,systemd} \
+          $rootDir/var/log/journal \
+          $rootDir/var/{db,empty,spool} \
+          $rootDir/var/lib/lastlog
 
         xargs -I % cp -a --reflink=auto % -t $rootDir/nix/store/ < ${closureInfo}/store-paths
 
@@ -53,10 +47,11 @@ let
         ln -sf /run/current-system/sw/sbin $rootDir/sbin
         ln -sf /run/current-system/sw/lib $rootDir/lib
         ln -sf /run/current-system/sw/lib64 $rootDir/lib64
+        ln -sf /run/lock $rootDir/var/lock
+        ln -sf /run $rootDir/var/run
 
         cp -rs ${config.system.build.etc}/etc/. $rootDir/etc/
         ${pkgs.systemd}/bin/systemd-machine-id-setup --root $rootDir --print 2>/dev/null || true
-        ln -sf ${initScript} $rootDir/init
 
         SOURCE_DATE_EPOCH=0 mksquashfs $rootDir $out \
           -all-root -no-hardlinks \
@@ -103,6 +98,7 @@ let
     gpu_mem=16
     dtoverlay=miniuart-bt
     kernel=Image
+    initramfs initrd followkernel
     cmdline=cmdline.txt
     start_file=start4.elf
     fixup_file=fixup4.dat
@@ -123,6 +119,7 @@ let
         set -euo pipefail
         mkdir -p $out/overlays
         cp ${config.boot.kernelPackages.kernel}/Image $out/Image
+        cp ${initrd}/initrd $out/initrd
         cp ${configTxt} $out/config.txt
         cp ${autobootTxt} $out/autoboot.txt
         cp ${rpiFw}/share/raspberrypi/boot/start4.elf $out/
@@ -142,7 +139,7 @@ let
             dev=/dev/mmcblk0p6
           fi
           printf '%s\n' \
-            "root=/dev/dm-0 rootfstype=squashfs ro init=${initScript} dm-mod.create=\"vroot,,0,ro,0 ''${sectors} verity 1 ''${dev} ''${dev} 4096 4096 ''${data_blocks} ''${data_blocks} sha256 ''${root_hash} ''${salt} 1 restart_on_corruption\" ${allKernelParams}" \
+            "init=${toplevel}/init dm-mod.create=\"vroot,,0,ro,0 ''${sectors} verity 1 ''${dev} ''${dev} 4096 4096 ''${data_blocks} ''${data_blocks} sha256 ''${root_hash} ''${salt} 1 restart_on_corruption\" ${allKernelParams}" \
             > "$out/cmdline-$slot.txt"
         done
       '';
@@ -175,8 +172,11 @@ let
         nativeBuildInputs = [ pkgs.e2fsprogs ];
       }
       ''
+        sourceDir=$PWD/persist-source
+        mkdir -p $sourceDir/etc
+        touch $sourceDir/etc/machine-id
         truncate -s 1G $out
-        mke2fs -t ext4 -L persist -b 4096 -F $out
+        mke2fs -t ext4 -L persist -b 4096 -F -d $sourceDir $out
       '';
 
   diskImage =
@@ -255,7 +255,7 @@ in
   imports = [ ./slot.nix ];
 
   options.boot.native-rpi = {
-    enable = lib.mkEnableOption "native Raspberry Pi boot (no UEFI, no initramfs)";
+    enable = lib.mkEnableOption "native Raspberry Pi boot (no UEFI)";
   };
 
   config = lib.mkIf cfg.enable {
@@ -266,8 +266,16 @@ in
         systemd-boot.enable = false;
       };
 
-      initrd.enable = lib.mkForce false;
-      initrd.systemd.enable = lib.mkForce false;
+      initrd = {
+        includeDefaultModules = false;
+        systemd.enable = false;
+
+        postDeviceCommands = ''
+          mkdir -p /mnt-root/lower /mnt-root/upper
+          mount -t squashfs /dev/dm-0 /mnt-root/lower -o ro
+          mount -t tmpfs tmpfs /mnt-root/upper
+        '';
+      };
 
       kernelParams = [
         "console=ttyAMA0,115200"
@@ -288,9 +296,13 @@ in
 
     fileSystems = {
       "/" = {
-        device = "/dev/dm-0";
-        fsType = "squashfs";
-        options = [ "ro" ];
+        device = "overlay";
+        fsType = "overlay";
+        options = [
+          "lowerdir=/lower"
+          "upperdir=/upper/upper"
+          "workdir=/upper/work"
+        ];
         neededForBoot = true;
       };
       "/persist" = {
@@ -317,6 +329,7 @@ in
         bootFiles
         diskImage
         ;
+      inherit initrd;
     };
   };
 }
