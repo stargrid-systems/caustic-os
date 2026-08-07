@@ -30,7 +30,7 @@ let
         rootDir=$PWD/rootfs
         mkdir -p \
           $rootDir/nix/store \
-          $rootDir/nix/var/nix/profiles \
+          $rootDir/nix/var/nix \
           $rootDir/etc \
           $rootDir/boot/a \
           $rootDir/boot/b \
@@ -42,11 +42,8 @@ let
 
         xargs -I % cp -a --reflink=auto % -t $rootDir/nix/store/ < ${closureInfo}/store-paths
 
-        ln -sf ${toplevel} $rootDir/nix/var/nix/profiles/system
         ln -sf /run/lock $rootDir/var/lock
         ln -sf /run $rootDir/var/run
-
-        cp -rs ${config.system.build.etc}/etc/. $rootDir/etc/
 
         SOURCE_DATE_EPOCH=0 mksquashfs $rootDir $out \
           -all-root -no-hardlinks \
