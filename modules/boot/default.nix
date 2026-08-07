@@ -14,17 +14,15 @@ let
 
   dtOverlays = config.hardware.deviceTree.overlays;
 
-  compiledOverlays = map (o:
-    pkgs.runCommand "${o.name}.dtbo" {
-      nativeBuildInputs = [ pkgs.dtc ];
-    } ''
+  compileOverlay =
+    o:
+    pkgs.runCommand "${o.name}.dtbo" { nativeBuildInputs = [ pkgs.dtc ]; } ''
       dtc -I dts -O dtb -@ -o $out ${
-        if o ? dtsFile
-        then toString o.dtsFile
-        else pkgs.writeText "${o.name}.dts" o.dtsText
+        if o ? dtsFile then toString o.dtsFile else pkgs.writeText "${o.name}.dts" o.dtsText
       }
-    ''
-  ) dtOverlays;
+    '';
+
+  compiledOverlays = map compileOverlay dtOverlays;
 
   overlayLines = map (o: "dtoverlay=${o.name}") dtOverlays;
 
