@@ -16,9 +16,11 @@ in
     hardware.i2c.enable = true;
 
     # Kernel module blacklisting (bluetooth, wifi, audio) is owned by caustic.hardening.
-    hardware.deviceTree = {
-      enable = true;
-      overlays = [
+    # Overlays are compiled by the boot module and applied by firmware.
+    # Do NOT enable hardware.deviceTree here -- NixOS would try to merge
+    # overlays into mainline DTBs, which fails because the overlays use
+    # downstream labels (e.g. i2c_csi_dsi).
+    hardware.deviceTree.overlays = [
         {
           name = "cm4-poe-ups-rtc-pcf85063a";
           dtsText = ''
@@ -65,6 +67,5 @@ in
           '';
         }
       ];
-    };
   };
 }
