@@ -256,24 +256,26 @@
           pre-commit = preCommitHooksFor system;
           caustic-hardening = import ./checks/caustic-hardening.nix {
             inherit
-              pkgs
-              self
-              nixpkgs
-              lib
-              ;
+            pkgs
+            self
+            nixpkgs
+            lib
+            ;
           };
           kernel-config = import ./checks/kernel-config.nix {
             inherit
-              pkgs
-              lib
-              ;
+            pkgs
+            lib
+            ;
           };
+        }
+        // lib.optionalAttrs (system == "aarch64-linux") {
           dt-overlay = import ./checks/dt-overlay-check.nix {
             inherit
-              pkgs
-              self
-              lib
-              ;
+            pkgs
+            self
+            lib
+            ;
           };
         }
       );
