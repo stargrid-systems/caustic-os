@@ -16,10 +16,14 @@ let
 
   compileOverlay =
     o:
+    let
+      src =
+        if o.dtsFile != null then o.dtsFile
+        else if o.dtsText != null then pkgs.writeText "${o.name}.dts" o.dtsText
+        else throw "overlay ${o.name} has neither dtsFile nor dtsText";
+    in
     pkgs.runCommand "${o.name}.dtbo" { nativeBuildInputs = [ pkgs.dtc ]; } ''
-      dtc -I dts -O dtb -@ -o $out ${
-        if o ? dtsFile then toString o.dtsFile else pkgs.writeText "${o.name}.dts" o.dtsText
-      }
+      dtc -I dts -O dtb -@ -o $out ${src}
     '';
 
   compiledOverlays = map compileOverlay dtOverlays;
