@@ -104,66 +104,98 @@ jobs:
             .#nixosConfigurations.production.config.boot.kernelPackages.kernel \
             .#nixosConfigurations.production.config.system.build.verityArtifacts \
             .#nixosConfigurations.production.config.system.build.diskImage \
+            .#nixosConfigurations.production.config.system.build.initialRamdisk \
+            .#nixosConfigurations.production.config.system.build.toplevel \
             nixpkgs#qemu \
-            nixpkgs#raspberrypifw
+            nixpkgs#raspberrypifw \
+            nixpkgs#dtc
 
       - name: QEMU boot test
+        timeout-minutes: 15
         run: |
           KERNEL=$(nix path-info .#nixosConfigurations.production.config.boot.kernelPackages.kernel)
           VERITY=$(nix path-info .#nixosConfigurations.production.config.system.build.verityArtifacts)
           DISK=$(nix path-info .#nixosConfigurations.production.config.system.build.diskImage)
+          INITRD=$(nix path-info .#nixosConfigurations.production.config.system.build.initialRamdisk)/initrd
+          TOPLEVEL=$(nix path-info .#nixosConfigurations.production.config.system.build.toplevel)
           QEMU=$(nix path-info nixpkgs#qemu)/bin/qemu-system-aarch64
           RPIFW=$(nix path-info nixpkgs#raspberrypifw)
+          FDTPUT=$(nix path-info nixpkgs#dtc)/bin/fdtput
 
           source "$VERITY/verity.txt"
           SECTORS=$(( data_blocks * 8 ))
 
           WORKDIR=$(mktemp -d)
           cp "$KERNEL/Image" "$WORKDIR/Image"
+          cp "$INITRD" "$WORKDIR/initrd"
           install -m 644 "$DISK" "$WORKDIR/disk.img"
           cp "$RPIFW/share/raspberrypi/boot/bcm2711-rpi-4-b.dtb" "$WORKDIR/bcm2711-rpi-4-b.dtb"
+          chmod u+w "$WORKDIR/bcm2711-rpi-4-b.dtb"
+
+          echo "=== Disabling watchdog in DTB ==="
+          "$FDTPUT" -t s "$WORKDIR/bcm2711-rpi-4-b.dtb" /soc/watchdog@7e100000 status disabled
+          echo "Watchdog status set to disabled"
+
+          SERIAL_LOG="$WORKDIR/qemu-output.log"
 
           echo "=== QEMU version ==="
           "$QEMU" --version
-          echo "=== Kernel image ==="
-          file "$WORKDIR/Image"
-          ls -lh "$WORKDIR/Image"
-          echo "=== Disk image ==="
-          ls -lh "$WORKDIR/disk.img"
-          echo "=== DTB ==="
-          ls -lh "$WORKDIR/bcm2711-rpi-4-b.dtb"
 
-          echo "=== Running QEMU (TCG, no KVM) ==="
+          echo "=== Running QEMU (300s timeout) ==="
 
           timeout 300 "$QEMU" \
-            -M raspi4b \
+            -M raspi4b,accel=kvm:tcg \
             -cpu cortex-a72 \
             -serial mon:stdio \
             -display none \
             -no-reboot \
+            -no-shutdown \
+            -watchdog-action none \
             -kernel "$WORKDIR/Image" \
+            -initrd "$WORKDIR/initrd" \
             -dtb "$WORKDIR/bcm2711-rpi-4-b.dtb" \
             -drive file="$WORKDIR/disk.img",format=raw,if=sd \
-            -append "root=/dev/dm-0 rootfstype=squashfs ro init=/init console=ttyAMA1,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=-1 dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk1p5 /dev/mmcblk1p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt 1 restart_on_corruption\" rootwait" \
-            > qemu-output.log 2>&1 || true
+            -netdev user,id=n1,hostfwd=tcp::8080-:80,hostfwd=tcp::8443-:443 \
+            -device usb-net,netdev=n1 \
+            -append "init=$TOPLEVEL/init console=ttyAMA1,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=30 systemd.log_target=kmsg systemd.log_level=debug dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk1p5 /dev/mmcblk1p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt 1 restart_on_corruption\" rootwait" \
+            2>&1 | tee "$SERIAL_LOG" || true
 
-          echo "=== QEMU output (first 80 lines) ==="
-          head -80 qemu-output.log
-          echo "=== QEMU output (last 100 lines) ==="
-          tail -100 qemu-output.log
+          echo "=== Serial output (first 80 lines) ==="
+          head -80 "$SERIAL_LOG" 2>/dev/null || echo "(serial log not found)"
+          echo "=== Serial output (last 300 lines) ==="
+          tail -300 "$SERIAL_LOG" 2>/dev/null || echo "(serial log not found)"
 
-          if grep -q "Emergency Mode" qemu-output.log 2>/dev/null; then
-            echo "::error::QEMU boot test FAILED: system entered emergency mode"
+          if grep -q "Emergency Mode" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::error::FAILED: system entered emergency mode"
             exit 1
           fi
 
-          if grep -qE "systemd\[1\]:.*running in system mode" qemu-output.log 2>/dev/null \
-             && grep -q "dm-0.*is ready" qemu-output.log 2>/dev/null; then
-            echo "::notice::QEMU boot test PASSED (verity root mounted, systemd started)"
+          if grep -q "Failed to spawn.*Read-only file system" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::error::FAILED: services cannot spawn (read-only filesystem)"
+            exit 1
+          fi
+
+          if grep -qE "systemd\[1\]:.*running in system mode" "$SERIAL_LOG" 2>/dev/null \
+             && grep -q "dm-0.*is ready" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::notice::Boot chain completed (verity root mounted, systemd started)"
           else
-            echo "::error::QEMU boot test FAILED: boot chain did not complete"
+            echo "::error::FAILED: boot chain did not complete"
             exit 1
           fi
+
+          if grep -q "Started Aperture gateway" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::notice::Aperture service started"
+          else
+            echo "::warning::Aperture service did not start (expected under TCG)"
+          fi
+
+          if grep -qi "dhcp\|dhcpcd\|10\.0\.2\." "$SERIAL_LOG" 2>/dev/null; then
+            echo "::notice::DHCP activity detected in serial log"
+          else
+            echo "::warning::No DHCP activity detected in serial log"
+          fi
+
+          echo "::notice::QEMU boot test PASSED"
 
   ci-pass:
     name: CI Pass
