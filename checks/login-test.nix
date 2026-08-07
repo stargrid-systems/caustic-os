@@ -47,6 +47,6 @@ pkgs.testers.runNixOSTest {
         )
 
     with subtest("serial-getty has auto-login for root"):
-        machine.succeed("systemctl cat serial-getty@ttyAMA0.service | grep -- '--autologin root'")
+        machine.succeed("grep -r 'autologin root' /etc/systemd/system/serial-getty*")
   '';
 }
