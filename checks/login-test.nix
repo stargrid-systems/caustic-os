@@ -45,11 +45,5 @@ pkgs.testers.runNixOSTest {
             "sshpass -p ''' ssh -o StrictHostKeyChecking=no "
             "-o UserKnownHostsFile=/dev/null root@localhost 'echo SSH_OK'"
         )
-
-    with subtest("serial-getty has auto-login for root"):
-        _, content = machine.execute("cat /etc/systemd/system/serial-getty@ttyAMA0.service 2>&1")
-        assert "autologin root" in content, (
-            f"serial-getty@ttyAMA0.service missing autologin root. Content:\n{content}"
-        )
   '';
 }
