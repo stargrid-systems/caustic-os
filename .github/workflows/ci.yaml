@@ -175,6 +175,11 @@ jobs:
             exit 1
           fi
 
+          if grep -q "directory contains user files" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::error::FAILED: /etc overlayfs conflict detected"
+            exit 1
+          fi
+
           if grep -qE "systemd\[1\]:.*running in system mode" "$SERIAL_LOG" 2>/dev/null \
              && grep -q "dm-0.*is ready" "$SERIAL_LOG" 2>/dev/null; then
             echo "::notice::Boot chain completed (verity root mounted, systemd started)"
