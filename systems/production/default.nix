@@ -35,7 +35,9 @@ in
       slot.enable = true;
     };
 
-    hardware.deviceTree.enable = true;
+    hardware.deviceTree.enable = false;
+
+    hardware.caustic.cm4PoeUps.enable = true;
 
     fileSystems = {
       "/boot/a" = {

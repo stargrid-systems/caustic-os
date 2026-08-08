@@ -269,6 +269,15 @@
               ;
           };
         }
+        // lib.optionalAttrs (system == "aarch64-linux") {
+          dt-overlay = import ./checks/dt-overlay-check.nix {
+            inherit
+              pkgs
+              self
+              lib
+              ;
+          };
+        }
       );
 
       tests = perSystem (system: {
