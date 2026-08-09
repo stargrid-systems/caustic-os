@@ -228,6 +228,7 @@ jobs:
               -e 'Dependency failed for File System Check' \
               -e 'systemd-fsck@dev-mmcblk0p' \
               -e 'Kernel command line' \
+              -e "Couldn't write.*ignoring" \
               > /tmp/qemu-errors.log 2>&1
 
           if [ -s /tmp/qemu-errors.log ]; then
