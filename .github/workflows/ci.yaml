@@ -202,7 +202,8 @@ jobs:
           fi
 
           echo "=== Scanning serial log for unexpected errors ==="
-          grep -iEn 'fail|error|denied|not found|no such file|emergency|cannot|unable|refus|timed out|I/O error|Oops:|kernel BUG|Kernel panic' "$SERIAL_LOG" 2>/dev/null \
+          sed 's/\x1b\[[0-9;]*m//g' "$SERIAL_LOG" 2>/dev/null \
+            | grep -iEn 'fail|error|denied|not found|no such file|emergency|cannot|unable|refus|timed out|I/O error|Oops:|kernel BUG|Kernel panic' \
             | grep -ivE \
               -e 'qemu-system-aarch64' \
               -e 'efi: UEFI not found' \
