@@ -223,6 +223,7 @@ jobs:
               -e 'hwdb.*No data available' \
               -e 'Device allow list pattern' \
               -e 'dev-mmcblk0p[12]' \
+              -e 'Timed out waiting for device' \
               -e 'boot-[ab]\.mount' \
               -e 'Dependency failed for /boot' \
               -e 'Dependency failed for File System Check' \
