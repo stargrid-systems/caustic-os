@@ -157,7 +157,7 @@ jobs:
             -drive file="$WORKDIR/disk.img",format=raw,if=sd \
             -netdev user,id=n1,hostfwd=tcp::8080-:80,hostfwd=tcp::8443-:443 \
             -device usb-net,netdev=n1 \
-            -append "init=$TOPLEVEL/init console=ttyAMA1,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=30 systemd.log_target=kmsg systemd.log_level=debug dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk1p5 /dev/mmcblk1p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt 1 restart_on_corruption\" rootwait" \
+            -append "init=$TOPLEVEL/init console=ttyAMA1,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=30 systemd.log_target=kmsg systemd.log_level=info dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk1p5 /dev/mmcblk1p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt 1 restart_on_corruption\" rootwait" \
             2>&1 | tee "$SERIAL_LOG" || true
 
           echo "=== Serial output (first 80 lines) ==="
@@ -199,6 +199,39 @@ jobs:
             echo "::notice::DHCP activity detected in serial log"
           else
             echo "::warning::No DHCP activity detected in serial log"
+          fi
+
+          echo "=== Scanning serial log for unexpected errors ==="
+          grep -iEn 'fail|error|denied|not found|no such file|panic|emergency|cannot|unable|refus|oops|BUG:|timed out|I/O error' "$SERIAL_LOG" 2>/dev/null \
+            | grep -ivE \
+              -e 'qemu-system-aarch64' \
+              -e 'efi: UEFI not found' \
+              -e 'bcm2711 dtc.*has been disabled' \
+              -e 'raspberrypi-exp-gpio' \
+              -e 'reg-fixed-voltage' \
+              -e 'uart-pl011.*device link' \
+              -e 'fsck.*credential' \
+              -e 'fsck.*progress socket' \
+              -e 'KDSETMODE' \
+              -e 'VT keyboard' \
+              -e 'terminal size' \
+              -e 'Failed to get terminal' \
+              -e 'Failed to query /dev/tty' \
+              -e 'Failed to reset VT' \
+              -e 'plymouth.*Connection refused' \
+              -e 'hwdb.*No data available' \
+              -e 'Device allow list pattern' \
+              -e 'dev-mmcblk0p[12]' \
+              -e 'boot-[ab]\.mount' \
+              -e 'Dependency failed for /boot' \
+              -e 'Dependency failed for File System Check' \
+              -e 'systemd-fsck@dev-mmcblk0p' \
+              > /tmp/qemu-errors.log 2>&1
+
+          if [ -s /tmp/qemu-errors.log ]; then
+            echo "::error::Unexpected errors found in serial log:"
+            cat /tmp/qemu-errors.log
+            exit 1
           fi
 
           echo "::notice::QEMU boot test PASSED"
