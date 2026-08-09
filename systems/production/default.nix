@@ -45,6 +45,7 @@ in
         options = [
           "rw"
           "nofail"
+          "x-systemd.device-timeout=2s"
         ];
       };
       "/boot/b" = {
@@ -53,9 +54,12 @@ in
         options = [
           "rw"
           "nofail"
+          "x-systemd.device-timeout=2s"
         ];
       };
     };
+
+    services.logrotate.enable = lib.mkForce false;
 
     caustic = {
       hardening.enable = true;
