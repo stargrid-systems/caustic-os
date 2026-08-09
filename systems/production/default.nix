@@ -1,7 +1,6 @@
 {
   lib,
   config,
-  pkgs,
   imageId ? "caustic-os",
   otaRegistry ? "ghcr.io/stargrid-systems/caustic-os",
   ...
@@ -84,6 +83,6 @@ in
       useDHCP = lib.mkDefault true;
     };
 
-    nix.package = pkgs.nix;
+    nix.enable = false;
   };
 }
