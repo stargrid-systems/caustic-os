@@ -279,6 +279,23 @@ in
       ShutdownWatchdogSec = "10min";
     };
 
+    boot.initrd.systemd.services."trigger-dm-0" = {
+      description = "Trigger uevent for dm-0 block device";
+      after = [
+        "systemd-udevd.service"
+        "systemd-udev-trigger.service"
+      ];
+      before = [ "initrd-root-device.target" ];
+      wantedBy = [ "initrd-root-device.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        echo change > /sys/block/dm-0/uevent
+      '';
+    };
+
     fileSystems = {
       "/" = {
         device = "none";
