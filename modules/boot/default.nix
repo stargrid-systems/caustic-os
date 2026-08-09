@@ -254,7 +254,10 @@ in
 
       initrd = {
         includeDefaultModules = false;
-        systemd.enable = true;
+        systemd = {
+          enable = true;
+          tpm2.enable = false;
+        };
       };
 
       kernelParams = [
@@ -268,6 +271,8 @@ in
         "systemd.log_level=info"
       ];
     };
+
+    systemd.tpm2.enable = false;
 
     systemd.settings.Manager = {
       RuntimeWatchdogSec = "off";
