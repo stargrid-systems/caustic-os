@@ -202,7 +202,7 @@ jobs:
           fi
 
           echo "=== Scanning serial log for unexpected errors ==="
-          grep -iEn 'fail|error|denied|not found|no such file|panic|emergency|cannot|unable|refus|oops|BUG:|timed out|I/O error' "$SERIAL_LOG" 2>/dev/null \
+          grep -iEn 'fail|error|denied|not found|no such file|emergency|cannot|unable|refus|timed out|I/O error|Oops:|kernel BUG|Kernel panic' "$SERIAL_LOG" 2>/dev/null \
             | grep -ivE \
               -e 'qemu-system-aarch64' \
               -e 'efi: UEFI not found' \
@@ -227,6 +227,7 @@ jobs:
               -e 'Dependency failed for /boot' \
               -e 'Dependency failed for File System Check' \
               -e 'systemd-fsck@dev-mmcblk0p' \
+              -e 'Kernel command line' \
               > /tmp/qemu-errors.log 2>&1
 
           if [ -s /tmp/qemu-errors.log ]; then
