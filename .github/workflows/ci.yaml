@@ -209,6 +209,7 @@ jobs:
               -e 'bcm2711 dtc.*has been disabled' \
               -e 'raspberrypi-exp-gpio' \
               -e 'reg-fixed-voltage' \
+              -e 'gpio-regulator' \
               -e 'uart-pl011.*device link' \
               -e 'fsck.*credential' \
               -e 'fsck.*progress socket' \
