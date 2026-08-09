@@ -254,7 +254,7 @@ in
 
       initrd = {
         includeDefaultModules = false;
-        systemd.enable = false;
+        systemd.enable = true;
       };
 
       kernelParams = [
