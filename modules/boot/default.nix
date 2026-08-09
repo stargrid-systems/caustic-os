@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  modulesPath,
   ...
 }:
 let
@@ -37,40 +38,10 @@ let
 
   initrd = config.system.build.initialRamdisk;
 
-  closureInfo = pkgs.buildPackages.closureInfo {
-    rootPaths = [ toplevel ];
+  rootSquashfs = pkgs.callPackage "${modulesPath}/../lib/make-squashfs.nix" {
+    storeContents = [ toplevel ];
+    comp = "zstd -Xcompression-level 6";
   };
-
-  rootSquashfs =
-    pkgs.runCommand "root-squashfs"
-      {
-        nativeBuildInputs = [ pkgs.squashfsTools ];
-      }
-      ''
-        set -euo pipefail
-        rootDir=$PWD/rootfs
-        mkdir -p \
-          $rootDir/nix/store \
-          $rootDir/nix/var/nix \
-          $rootDir/etc \
-          $rootDir/boot/a \
-          $rootDir/boot/b \
-          $rootDir/{run,tmp,var,dev,proc,sys,persist,home,mnt,opt,srv,root} \
-          $rootDir/var/lib/{aperture,caustic-ota,dropbear,nixos,systemd} \
-          $rootDir/var/log/journal \
-          $rootDir/var/{db,empty,spool} \
-          $rootDir/var/lib/lastlog
-
-        xargs -I % cp -a --reflink=auto % -t $rootDir/nix/store/ < ${closureInfo}/store-paths
-
-        ln -sf /run/lock $rootDir/var/lock
-        ln -sf /run $rootDir/var/run
-
-        SOURCE_DATE_EPOCH=0 mksquashfs $rootDir $out \
-          -all-root -no-hardlinks \
-          -b 1048576 -comp zstd -Xcompression-level 6 \
-          -processors $NIX_BUILD_CORES -root-mode 0755 -noappend
-      '';
 
   verityArtifacts =
     pkgs.runCommand "verity-artifacts"
@@ -284,12 +255,6 @@ in
       initrd = {
         includeDefaultModules = false;
         systemd.enable = false;
-
-        postDeviceCommands = ''
-          mkdir -p /mnt-root/lower /mnt-root/upper
-          mount -t squashfs /dev/dm-0 /mnt-root/lower -o ro
-          mount -t tmpfs tmpfs /mnt-root/upper
-        '';
       };
 
       kernelParams = [
@@ -305,18 +270,27 @@ in
     };
 
     systemd.settings.Manager = {
-      RuntimeWatchdogSec = "10s";
+      RuntimeWatchdogSec = "off";
       ShutdownWatchdogSec = "10min";
     };
 
     fileSystems = {
       "/" = {
-        device = "overlay";
-        fsType = "overlay";
+        device = "none";
+        fsType = "tmpfs";
         options = [
-          "lowerdir=/lower"
-          "upperdir=/upper/upper"
-          "workdir=/upper/work"
+          "size=25%"
+          "mode=755"
+        ];
+        neededForBoot = true;
+      };
+      "/nix/store" = {
+        device = "/dev/dm-0";
+        fsType = "squashfs";
+        options = [
+          "ro"
+          "nodev"
+          "nosuid"
         ];
         neededForBoot = true;
       };
