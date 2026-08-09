@@ -73,6 +73,10 @@ let
 
     "CONFIG_USB"
     "CONFIG_USB_STORAGE"
+
+    "CONFIG_BLK_CGROUP"
+    "CONFIG_MEMCG"
+    "CONFIG_ZSWAP"
   ];
 in
 pkgs.runCommand "kernel-config-check"
