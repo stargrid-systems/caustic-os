@@ -175,8 +175,8 @@ jobs:
             exit 1
           fi
 
-          if grep -q "directory contains user files" "$SERIAL_LOG" 2>/dev/null; then
-            echo "::error::FAILED: /etc overlayfs conflict detected"
+          if grep -qi "systemd-remount-fs.*failed\|systemd-remount-fs.*error" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::error::FAILED: systemd-remount-fs failed"
             exit 1
           fi
 
@@ -191,7 +191,8 @@ jobs:
           if grep -q "Started Aperture gateway" "$SERIAL_LOG" 2>/dev/null; then
             echo "::notice::Aperture service started"
           else
-            echo "::warning::Aperture service did not start (expected under TCG)"
+            echo "::error::FAILED: Aperture service did not start"
+            exit 1
           fi
 
           if grep -qi "dhcp\|dhcpcd\|10\.0\.2\." "$SERIAL_LOG" 2>/dev/null; then
