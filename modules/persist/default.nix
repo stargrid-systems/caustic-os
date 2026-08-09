@@ -14,7 +14,6 @@ let
     "/var/lib/nixos"
     "/var/lib/systemd"
     "/var/log/journal"
-    "/nix/var/nix"
   ];
 in
 {
