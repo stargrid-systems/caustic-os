@@ -3,17 +3,17 @@
     "aperture-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1786193156,
-        "narHash": "sha256-ORa5HPg5ssGAaMMyLj2o8XkdDQzz3/IDr5I00+QRYGM=",
+        "lastModified": 1786244330,
+        "narHash": "sha256-s2B1k5nyn7gPpi3cCqAu4RZYczMCtfB3ZirCYLxGqSE=",
         "owner": "stargrid-systems",
         "repo": "aperture",
-        "rev": "d08a35ba4cfed1eb087cc9e2399d7c056ed40ffc",
+        "rev": "f47f3fff32752c7b26968da48acf4d426a27df7b",
         "type": "github"
       },
       "original": {
         "owner": "stargrid-systems",
         "repo": "aperture",
-        "rev": "d08a35ba4cfed1eb087cc9e2399d7c056ed40ffc",
+        "rev": "f47f3fff32752c7b26968da48acf4d426a27df7b",
         "type": "github"
       }
     },
