@@ -230,6 +230,7 @@ jobs:
               -e 'systemd-fsck@dev-mmcblk0p' \
               -e 'Kernel command line' \
               -e "Couldn't write.*ignoring" \
+              -e 'Failed unmounting' \
               > /tmp/qemu-errors.log 2>&1 || true
 
           if [ -s /tmp/qemu-errors.log ]; then
