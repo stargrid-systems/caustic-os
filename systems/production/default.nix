@@ -27,8 +27,6 @@ in
       };
     };
 
-    services.caustic-ota.registry = lib.mkDefault otaRegistry;
-
     boot.native-rpi = {
       enable = true;
       slot.enable = true;
@@ -59,8 +57,6 @@ in
       };
     };
 
-    services.logrotate.enable = lib.mkForce false;
-
     caustic = {
       hardening.enable = true;
       networking.enable = true;
@@ -70,7 +66,11 @@ in
 
     services = {
       aperture.enable = true;
-      caustic-ota.enable = true;
+      caustic-ota = {
+        enable = true;
+        registry = lib.mkDefault otaRegistry;
+      };
+      logrotate.enable = lib.mkForce false;
 
       avahi = {
         enable = true;
