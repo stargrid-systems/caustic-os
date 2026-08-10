@@ -6,7 +6,7 @@
   ...
 }:
 {
-  users.users.root.hashedPassword = "";
+  users.users.root.password = "";
 
   services.dropbear = {
     enable = true;
@@ -15,7 +15,7 @@
     allowEmptyPasswords = true;
   };
 
-  systemd.services."serial-getty@ttyAMA0".serviceConfig.ExecStart = [
+  systemd.services."serial-getty@".serviceConfig.ExecStart = [
     ""
     "-${lib.getExe' pkgs.util-linux "agetty"} --autologin root --noclear %I 115200 linux"
   ];
