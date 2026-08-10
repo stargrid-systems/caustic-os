@@ -46,6 +46,13 @@ pkgs.testers.runNixOSTest {
           package = self.packages.${system}.caustic-ota;
         };
         dropbear.enable = true;
+        avahi = {
+          enable = true;
+          publish = {
+            enable = true;
+            addresses = true;
+          };
+        };
       };
 
       virtualisation = {
@@ -82,6 +89,13 @@ pkgs.testers.runNixOSTest {
           machine.wait_for_unit("aperture.service")
           machine.wait_for_open_port(80)
           machine.succeed("curl -s -o /dev/null http://localhost:80/")
+
+      with subtest("aperture publishes mDNS service files"):
+          machine.wait_for_unit("avahi-daemon.service")
+          http = machine.succeed("cat /etc/avahi/services/aperture-http.service")
+          assert "_http._tcp" in http and "<port>80</port>" in http
+          https = machine.succeed("cat /etc/avahi/services/aperture-https.service")
+          assert "_https._tcp" in https and "<port>443</port>" in https
 
       with subtest("dropbear listens on port 22"):
           machine.wait_for_unit("dropbear.service")

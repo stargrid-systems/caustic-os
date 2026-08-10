@@ -6,6 +6,9 @@
 }:
 let
   cfg = config.services.aperture;
+
+  httpPort = lib.toInt (lib.last (lib.splitString ":" cfg.httpAddr));
+  httpsPort = lib.toInt (lib.last (lib.splitString ":" cfg.httpsAddr));
 in
 {
   options.services.aperture = {
@@ -106,5 +109,32 @@ in
       80
       443
     ];
+
+    services.avahi.extraServiceFiles = lib.mkIf config.services.avahi.enable {
+      aperture-http = ''
+        <?xml version="1.0" standalone='no'?>
+        <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+        <service-group>
+          <name replace-wildcards="yes">Aperture (HTTP) on %h</name>
+          <service>
+            <type>_http._tcp</type>
+            <port>${toString httpPort}</port>
+            <txt-record>path=/</txt-record>
+          </service>
+        </service-group>
+      '';
+      aperture-https = ''
+        <?xml version="1.0" standalone='no'?>
+        <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+        <service-group>
+          <name replace-wildcards="yes">Aperture (HTTPS) on %h</name>
+          <service>
+            <type>_https._tcp</type>
+            <port>${toString httpsPort}</port>
+            <txt-record>path=/</txt-record>
+          </service>
+        </service-group>
+      '';
+    };
   };
 }
