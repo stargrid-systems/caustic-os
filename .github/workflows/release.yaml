@@ -31,79 +31,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Compute next CalVer version
-        id: calver
-        run: |
-          set -euo pipefail
-          today=$(date -u +'%Y.%m')
-
-          from_tags=$(
-            git tag --list "${today}.*" \
-              | sed "s/^${today}\.//" \
-              | sort -n \
-              | tail -1
-          )
-
-          from_file=""
-          if [ -f version.txt ]; then
-            current=$(tr -d '[:space:]' < version.txt)
-            from_file=$(printf '%s\n' "$current" | sed -n "s/^${today}\.\([0-9]\+\)$/\1/p")
-          fi
-
-          highest=$(
-            printf '%s\n%s\n' "${from_tags:-}" "${from_file:-}" \
-              | grep -E '^[0-9]+$' \
-              | sort -n \
-              | tail -1
-          ) || true
-
-          if [ -z "$highest" ]; then
-            next=1
-          else
-            next=$(( highest + 1 ))
-          fi
-          echo "version=${today}.${next}" >> "$GITHUB_OUTPUT"
-
-      - name: Bump version.txt
-        run: printf '%s\n' '${{ steps.calver.outputs.version }}' > version.txt
-
-      - name: Build changelog
-        id: changelog
-        env:
-          VERSION: ${{ steps.calver.outputs.version }}
-        run: |
-          set -euo pipefail
-          last_tag=$(git describe --tags --abbrev=0 --match "[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || echo "")
-          if [ -n "$last_tag" ]; then
-            range="${last_tag}..HEAD"
-            since="since ${last_tag}"
-          else
-            range="HEAD"
-            since="since the start of history"
-          fi
-          {
-            echo "body<<EOF"
-            echo "## What's changed ${since}"
-            echo
-            git log "${range}" --pretty=format:'- %s' --no-merges | head -100 || true
-            echo
-            echo "<!-- release-notes-end -->"
-            echo
-            echo "Merging this PR cuts release **${VERSION}**."
-            echo "The merge commit is tagged. The dev image builds immediately."
-            echo "The prod image build runs in the \`prod\` environment and waits for approval."
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Open or update release PR
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8.1.1
+      - name: Open release PR
+        uses: stargrid-systems/calver-release@1c45aa1ec6ea7a659798dadbf33ac260c63cc350  # v2.0.0
         with:
-          branch: release-next
-          title: "release: ${{ steps.calver.outputs.version }}"
-          body: ${{ steps.changelog.outputs.body }}
-          labels: release
-          commit-message: "release: bump version.txt to ${{ steps.calver.outputs.version }}"
+          version-file: version.txt
+          changelog-trailer: |
+            The merge commit is tagged. The dev image builds immediately.
+            The prod image build runs in the `prod` environment and waits for approval.
 
   tag:
     name: Tag release
@@ -115,33 +49,20 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'release')
     runs-on: ubuntu-slim
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ steps.tag.outputs.version }}
     steps:
       - name: Checkout merge commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           persist-credentials: false
-
-      - name: Read version
-        id: version
-        run: |
-          v=$(tr -d '[:space:]' < version.txt)
-          echo "version=${v}" >> "$GITHUB_OUTPUT"
-
-      - name: Create draft GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          printf '%s' "$PR_BODY" | sed '/<!-- release-notes-end -->/,$d' > /tmp/release-notes.md
-          gh release create "${VERSION}" \
-            --target "${MERGE_SHA}" \
-            --title "${VERSION}" \
-            --notes-file /tmp/release-notes.md \
-            --draft
+      - id: tag
+        name: Create draft release
+        uses: stargrid-systems/calver-release@1c45aa1ec6ea7a659798dadbf33ac260c63cc350  # v2.0.0
+        with:
+          version-file: version.txt
+          mode: tag
+          draft: "true"
 
   build-dev:
     name: Build dev image
