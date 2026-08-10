@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::Error;
 
 const VERSION_ANNOTATION: &str = "org.opencontainers.image.version";
+const CREATED_ANNOTATION: &str = "org.opencontainers.image.created";
 
 /// Extract the version annotation from a manifest.
 ///
@@ -22,6 +23,16 @@ pub fn extract_version(manifest: &OciImageManifest) -> Result<String, Error> {
         .and_then(|annotations| annotations.get(VERSION_ANNOTATION))
         .cloned()
         .ok_or_else(|| Error::MissingAnnotation(VERSION_ANNOTATION.to_string()))
+}
+
+/// Read the `org.opencontainers.image.created` annotation from a manifest.
+#[must_use]
+pub fn extract_created(manifest: &OciImageManifest) -> Option<String> {
+    manifest
+        .annotations
+        .as_ref()
+        .and_then(|annotations| annotations.get(CREATED_ANNOTATION))
+        .cloned()
 }
 
 /// Verify SHA256 checksums listed in the `SHA256SUMS` file inside `dir`.
@@ -151,6 +162,32 @@ mod tests {
             extract_version(&manifest),
             Err(Error::MissingAnnotation(_))
         ));
+    }
+
+    #[test]
+    fn extract_created_returns_annotation() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert(
+            "org.opencontainers.image.created".to_string(),
+            "2024-01-02T03:04:05Z".to_string(),
+        );
+        let manifest = OciImageManifest {
+            annotations: Some(annotations),
+            ..Default::default()
+        };
+        assert_eq!(
+            extract_created(&manifest).as_deref(),
+            Some("2024-01-02T03:04:05Z")
+        );
+    }
+
+    #[test]
+    fn extract_created_missing_returns_none() {
+        let manifest = OciImageManifest {
+            annotations: Some(BTreeMap::new()),
+            ..Default::default()
+        };
+        assert_eq!(extract_created(&manifest), None);
     }
 
     #[test]

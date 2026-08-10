@@ -39,6 +39,9 @@ pub enum Text {
     Error,
     RpibootNotFound,
     Removable,
+    Previous,
+    Next,
+    LoadingShort,
 }
 
 #[must_use]
@@ -103,5 +106,14 @@ pub const fn t(lang: Lang, text: Text) -> &'static str {
 
         (Lang::En, Text::Removable) => "(removable)",
         (Lang::De, Text::Removable) => "(wechselmedien)",
+
+        (Lang::En, Text::Previous) => "Previous",
+        (Lang::De, Text::Previous) => "Zurück",
+
+        (Lang::En, Text::Next) => "Next",
+        (Lang::De, Text::Next) => "Weiter",
+
+        (Lang::En, Text::LoadingShort) => "Loading...",
+        (Lang::De, Text::LoadingShort) => "Lädt...",
     }
 }
