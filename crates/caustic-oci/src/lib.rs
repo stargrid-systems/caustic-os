@@ -1,14 +1,14 @@
 //! Shared OCI registry operations for Caustic OS.
 
-mod client;
-mod verify;
-
 pub use oci_client::manifest::{OciDescriptor, OciImageManifest};
 
 pub use self::client::{
     fetch_manifest, find_layer_by_suffix, list_tags, pull_blob, pull_blob_streaming,
 };
 pub use self::verify::{extract_version, verify_sha256sums};
+
+mod client;
+mod verify;
 
 #[derive(Debug)]
 pub enum Error {
