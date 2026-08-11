@@ -3,6 +3,7 @@ mod disk;
 mod flash;
 mod i18n;
 mod usbboot;
+mod widgets;
 
 fn main() -> iced::Result {
     let simulate = std::env::args().any(|a| a == "--simulate");

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,10 +9,12 @@ use iced::{Center, Element, Fill, Task};
 
 use crate::disk::{self, Disk};
 use crate::i18n::{Lang, Text, t};
+use crate::widgets::pager;
 use crate::{flash, usbboot};
 
 const REGISTRY_PROD: &str = "ghcr.io/stargrid-systems/caustic-os";
 const REGISTRY_DEV: &str = "ghcr.io/stargrid-systems/caustic-os-dev";
+const PAGE_SIZE: usize = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Channel {
@@ -40,6 +43,8 @@ pub struct Installer {
     channel: Channel,
     step: Step,
     tags: Vec<String>,
+    tag_metas: HashMap<String, TagMeta>,
+    current_page: usize,
     selected_tag: Option<usize>,
     image_path: Option<PathBuf>,
     error: Option<String>,
@@ -47,10 +52,31 @@ pub struct Installer {
     auto: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum FetchStatus {
+    #[default]
+    Idle,
+    Loading,
+    Done,
+    Failed,
+}
+
+#[derive(Clone, Debug, Default)]
+struct TagMeta {
+    created: Option<String>,
+    status: FetchStatus,
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     TagsLoaded(Result<Vec<String>, String>),
     TagSelected(usize),
+    TagMetaLoaded {
+        tag: String,
+        created: Result<Option<String>, String>,
+    },
+    NextPage,
+    PrevPage,
     ChannelSelected(Channel),
     DownloadClicked,
     DownloadProgress(f32),
@@ -96,6 +122,8 @@ impl Installer {
                 channel,
                 step: Step::Loading,
                 tags: Vec::new(),
+                tag_metas: HashMap::new(),
+                current_page: 0,
                 selected_tag: None,
                 image_path: None,
                 error: None,
@@ -110,12 +138,14 @@ impl Installer {
         match message {
             Message::TagsLoaded(Ok(tags)) => {
                 self.tags = tags;
+                self.tag_metas.clear();
+                self.current_page = 0;
                 self.step = Step::SelectRelease;
                 if self.auto {
                     self.selected_tag = Some(0);
                     return delayed_message(Duration::from_secs(1), Message::DownloadClicked);
                 }
-                Task::none()
+                self.fetch_visible_page()
             }
             Message::TagsLoaded(Err(err))
             | Message::DownloadFinished(Err(err))
@@ -128,6 +158,12 @@ impl Installer {
                 self.selected_tag = Some(index);
                 Task::none()
             }
+            Message::TagMetaLoaded { tag, created } => {
+                self.store_tag_meta(&tag, created);
+                Task::none()
+            }
+            Message::NextPage => self.goto_page(self.current_page + 1),
+            Message::PrevPage => self.goto_page(self.current_page.saturating_sub(1)),
             Message::ChannelSelected(channel) => self.select_channel(channel),
             Message::DownloadClicked => self.start_download(),
             Message::DownloadProgress(progress) => {
@@ -212,6 +248,8 @@ impl Installer {
         self.channel = channel;
         self.selected_tag = None;
         self.tags.clear();
+        self.tag_metas.clear();
+        self.current_page = 0;
         self.error = None;
         self.image_path = None;
         self.step = Step::Loading;
@@ -366,12 +404,29 @@ impl Installer {
     }
 
     fn view_releases(&self) -> Element<'_, Message> {
+        let total_pages = self.total_pages();
+        let start = self.current_page * PAGE_SIZE;
+        let end = (start + PAGE_SIZE).min(self.tags.len());
+
         let mut list = column![];
 
-        for (i, tag) in self.tags.iter().enumerate() {
+        for i in start..end {
+            let tag = &self.tags[i];
             let is_selected = self.selected_tag == Some(i);
+
+            let date_text = self.tag_metas.get(tag).and_then(|meta| match meta.status {
+                FetchStatus::Loading => Some(t(self.lang, Text::LoadingShort).to_string()),
+                FetchStatus::Done => meta.created.as_deref().map(format_created),
+                FetchStatus::Idle | FetchStatus::Failed => None,
+            });
+
+            let mut info = column![text(tag.as_str()).size(16)];
+            if let Some(d) = date_text {
+                info = info.push(text(d).size(12));
+            }
+
             let label = row![
-                text(tag.as_str()).size(16),
+                info,
                 Space::new().width(Fill),
                 if is_selected {
                     text("\u{2713}").size(16)
@@ -393,9 +448,19 @@ impl Installer {
             );
         }
 
+        let pager = pager(
+            self.current_page,
+            total_pages,
+            Some(Message::PrevPage),
+            Some(Message::NextPage),
+            t(self.lang, Text::Previous),
+            t(self.lang, Text::Next),
+        );
+
         column![
             text(t(self.lang, Text::SelectRelease)).size(18),
             scrollable(list.spacing(4)).height(Fill),
+            pager,
         ]
         .spacing(12)
         .into()
@@ -570,6 +635,70 @@ impl Installer {
 
         Task::sip(straw, Message::FlashProgress, Message::FlashFinished)
     }
+
+    fn store_tag_meta(&mut self, tag: &str, created: Result<Option<String>, String>) {
+        if let Some(meta) = self.tag_metas.get_mut(tag) {
+            match created {
+                Ok(created) => {
+                    meta.created = created;
+                    meta.status = FetchStatus::Done;
+                }
+                Err(_) => meta.status = FetchStatus::Failed,
+            }
+        }
+    }
+
+    fn goto_page(&mut self, page: usize) -> Task<Message> {
+        let target = page.min(self.total_pages().saturating_sub(1));
+        if target != self.current_page {
+            self.current_page = target;
+            return self.fetch_visible_page();
+        }
+        Task::none()
+    }
+
+    const fn total_pages(&self) -> usize {
+        if self.tags.is_empty() {
+            1
+        } else {
+            self.tags.len().div_ceil(PAGE_SIZE)
+        }
+    }
+
+    fn fetch_visible_page(&mut self) -> Task<Message> {
+        if self.simulate {
+            return Task::none();
+        }
+
+        let start = self.current_page * PAGE_SIZE;
+        let end = (start + PAGE_SIZE).min(self.tags.len());
+        let registry = self.channel.registry().to_string();
+
+        let mut tasks = Vec::new();
+        for i in start..end {
+            let tag = self.tags[i].clone();
+            let entry = self.tag_metas.entry(tag.clone()).or_default();
+            if !should_fetch(entry.status) {
+                continue;
+            }
+            entry.status = FetchStatus::Loading;
+
+            let registry = registry.clone();
+            let tag_for_msg = tag.clone();
+            tasks.push(Task::perform(
+                async move {
+                    let manifest = caustic_oci::fetch_manifest(&registry, &tag, None).await?;
+                    Ok::<_, caustic_oci::Error>(caustic_oci::extract_created(&manifest))
+                },
+                move |created: Result<Option<String>, caustic_oci::Error>| Message::TagMetaLoaded {
+                    tag: tag_for_msg,
+                    created: created.map_err(|e| e.to_string()),
+                },
+            ));
+        }
+
+        Task::batch(tasks)
+    }
 }
 
 fn delayed_message(delay: Duration, msg: Message) -> Task<Message> {
@@ -690,6 +819,25 @@ fn cache_dir() -> Option<PathBuf> {
     Some(cache)
 }
 
+const fn should_fetch(status: FetchStatus) -> bool {
+    matches!(status, FetchStatus::Idle | FetchStatus::Failed)
+}
+
+fn format_created(raw: &str) -> String {
+    let b = raw.as_bytes();
+    let valid = b.len() >= 10
+        && b[0..4].iter().all(u8::is_ascii_digit)
+        && b[4] == b'-'
+        && b[5..7].iter().all(u8::is_ascii_digit)
+        && b[7] == b'-'
+        && b[8..10].iter().all(u8::is_ascii_digit);
+    if valid {
+        raw[..10].to_string()
+    } else {
+        raw.to_string()
+    }
+}
+
 fn run_with_progress<F, Fut, E>(f: F) -> impl Straw<(), f32, String>
 where
     F: FnOnce(Arc<dyn Fn(u64, u64) + Send + Sync>) -> Fut + Send,
@@ -722,4 +870,85 @@ where
             }
         }
     })
+}
+
+#[cfg(test)]
+mod release_date_tests {
+    use super::*;
+
+    fn installer_with_tags(n: usize) -> Installer {
+        let (mut inst, _task) = Installer::init(true, false);
+        inst.tags = (0..n).map(|i| format!("v{i}")).collect();
+        inst.current_page = 0;
+        inst
+    }
+
+    #[test]
+    fn total_pages_empty_is_one() {
+        let inst = installer_with_tags(0);
+        assert_eq!(inst.total_pages(), 1);
+    }
+
+    #[test]
+    fn total_pages_exact_multiple() {
+        let inst = installer_with_tags(20);
+        assert_eq!(inst.total_pages(), 2);
+    }
+
+    #[test]
+    fn total_pages_partial_page() {
+        let inst = installer_with_tags(23);
+        assert_eq!(inst.total_pages(), 3);
+    }
+
+    #[test]
+    fn goto_page_clamps_high() {
+        let mut inst = installer_with_tags(15);
+        let _ = inst.goto_page(100);
+        assert_eq!(inst.current_page, 1);
+    }
+
+    #[test]
+    fn goto_page_clamps_to_last() {
+        let mut inst = installer_with_tags(25);
+        let _ = inst.goto_page(usize::MAX);
+        assert_eq!(inst.current_page, 2);
+    }
+
+    #[test]
+    fn goto_page_no_op_when_same() {
+        let mut inst = installer_with_tags(25);
+        inst.current_page = 1;
+        let _ = inst.goto_page(1);
+        assert_eq!(inst.current_page, 1);
+    }
+
+    #[test]
+    fn should_fetch_retries_failed_and_idle() {
+        assert!(should_fetch(FetchStatus::Idle));
+        assert!(should_fetch(FetchStatus::Failed));
+        assert!(!should_fetch(FetchStatus::Loading));
+        assert!(!should_fetch(FetchStatus::Done));
+    }
+
+    #[test]
+    fn format_created_strips_time_portion() {
+        assert_eq!(format_created("2024-01-02T03:04:05Z"), "2024-01-02");
+    }
+
+    #[test]
+    fn format_created_returns_date_only() {
+        assert_eq!(format_created("2026-08-11"), "2026-08-11");
+    }
+
+    #[test]
+    fn format_created_keeps_non_date_unchanged() {
+        assert_eq!(format_created("not-a-date"), "not-a-date");
+        assert_eq!(format_created("v1.0.0"), "v1.0.0");
+    }
+
+    #[test]
+    fn format_created_short_input_unchanged() {
+        assert_eq!(format_created("2024"), "2024");
+    }
 }
