@@ -10,7 +10,7 @@ license.workspace = true
 caustic-oci = { workspace = true }
 directories = { workspace = true }
 iced = { workspace = true, features = ["sipper", "tokio", "wayland", "wgpu"] }
-rfd = { workspace = true, features = ["xdg-portal", "tokio"] }
+rfd = { workspace = true, features = ["xdg-portal"] }
 rustix = { workspace = true, features = ["process"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
