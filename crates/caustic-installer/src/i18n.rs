@@ -27,6 +27,10 @@ pub enum Text {
     Development,
     Download,
     Downloading,
+    Verifying,
+    VerifyDisabled,
+    VerifyDisabledHint,
+    Continue,
     SelectDisk,
     DataLossWarning,
     Flash,
@@ -66,6 +70,21 @@ pub const fn t(lang: Lang, text: Text) -> &'static str {
 
         (Lang::En, Text::Downloading) => "Downloading image...",
         (Lang::De, Text::Downloading) => "Image wird heruntergeladen...",
+
+        (Lang::En, Text::Verifying) => "Verifying signature...",
+        (Lang::De, Text::Verifying) => "Signatur wird überprüft...",
+
+        (Lang::En, Text::VerifyDisabled) => "Signature verification disabled",
+        (Lang::De, Text::VerifyDisabled) => "Signaturprüfung deaktiviert",
+
+        (Lang::En, Text::VerifyDisabledHint) => {
+            "This is a development build. The downloaded image was not checked."
+        }
+        (Lang::De, Text::VerifyDisabledHint) => {
+            "Dies ist ein Entwicklungsbau. Das heruntergeladene Image wurde nicht geprüft."
+        }
+
+        (Lang::En, Text::Continue) => "Continue",
 
         (Lang::En, Text::SelectDisk) => "Select target disk",
         (Lang::De, Text::SelectDisk) => "Zieldatenträger auswählen",
@@ -124,7 +143,7 @@ pub const fn t(lang: Lang, text: Text) -> &'static str {
         (Lang::De, Text::Previous) => "Zurück",
 
         (Lang::En, Text::Next) => "Next",
-        (Lang::De, Text::Next) => "Weiter",
+        (Lang::De, Text::Continue | Text::Next) => "Weiter",
 
         (Lang::En, Text::LoadingShort) => "Loading...",
         (Lang::De, Text::LoadingShort) => "Lädt...",

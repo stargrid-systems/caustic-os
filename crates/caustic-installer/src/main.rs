@@ -1,3 +1,7 @@
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, fmt};
+
 mod app;
 mod disk;
 mod flash;
@@ -32,6 +36,11 @@ fn main() -> iced::Result {
 }
 
 fn run_gui(simulate: bool, auto: bool) -> iced::Result {
+    let _ = tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .try_init();
+
     iced::application(
         move || app::Installer::init(simulate, auto),
         app::Installer::update,

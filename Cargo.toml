@@ -27,6 +27,7 @@ rustix = { version = "1", default-features = false }
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
 sha2 = { version = "0.11", default-features = false }
+sigstore = { version = "0.11", default-features = false }
 sys-locale = { version = "0.3", default-features = false }
 tokio = { version = "1", default-features = false }
 tracing = { version = "0.1", default-features = false }
