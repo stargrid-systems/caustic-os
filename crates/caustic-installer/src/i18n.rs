@@ -39,6 +39,8 @@ pub enum Text {
     Error,
     RpibootNotFound,
     Removable,
+    UseLocalFile,
+    LocalFileInvalid,
     Previous,
     Next,
     LoadingShort,
@@ -106,6 +108,17 @@ pub const fn t(lang: Lang, text: Text) -> &'static str {
 
         (Lang::En, Text::Removable) => "(removable)",
         (Lang::De, Text::Removable) => "(wechselmedien)",
+
+        (Lang::En, Text::UseLocalFile) => "Use a local file",
+        (Lang::De, Text::UseLocalFile) => "Lokale Datei verwenden",
+
+        (Lang::En, Text::LocalFileInvalid) => {
+            "Selected file is not a usable image. Expected img, iso, or gz and must not be empty."
+        }
+        (Lang::De, Text::LocalFileInvalid) => {
+            "Die Datei ist kein verwendbares Image. img, iso oder gz erwartet und darf nicht leer \
+             sein."
+        }
 
         (Lang::En, Text::Previous) => "Previous",
         (Lang::De, Text::Previous) => "Zurück",
