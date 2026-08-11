@@ -61,13 +61,8 @@ pub async fn verify_artifact(
         .build()
         .map_err(|e| Error::Fetch(e.to_string()))?;
 
-    let (cosign_image, source_digest) = client
-        .triangulate(&image, &auth)
-        .await
-        .map_err(|e| Error::Fetch(e.to_string()))?;
-
     let layers = client
-        .trusted_signature_layers(&auth, &source_digest, &cosign_image)
+        .trusted_signature_layers(&auth, &image)
         .await
         .map_err(|e| Error::Fetch(e.to_string()))?;
 
