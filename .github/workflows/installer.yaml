@@ -82,11 +82,8 @@ jobs:
 
       - name: Build
         env:
-          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
-          CAUSTIC_COSIGN_PUB: cosign.pub
-        run: |
-          printf '%s' "$COSIGN_PUBLIC_KEY" > "$CAUSTIC_COSIGN_PUB"
-          cargo build --release -p caustic-installer
+          CAUSTIC_COSIGN_PUB: ${{ secrets.COSIGN_PUBLIC_KEY }}
+        run: cargo build --release -p caustic-installer
 
       - name: Create AppImage
         env:
@@ -135,11 +132,8 @@ jobs:
 
       - name: Build
         env:
-          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
-          CAUSTIC_COSIGN_PUB: cosign.pub
-        run: |
-          Set-Content -Path "$env:CAUSTIC_COSIGN_PUB" -Value "$env:COSIGN_PUBLIC_KEY" -NoNewline
-          cargo build --release -p caustic-installer
+          CAUSTIC_COSIGN_PUB: ${{ secrets.COSIGN_PUBLIC_KEY }}
+        run: cargo build --release -p caustic-installer
 
       - name: Create zip
         shell: pwsh

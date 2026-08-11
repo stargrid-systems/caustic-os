@@ -8,7 +8,6 @@ license.workspace = true
 
 [dependencies]
 caustic-oci = { workspace = true }
-caustic-oci-key = { workspace = true }
 directories = { workspace = true }
 iced = { workspace = true, features = ["sipper", "tokio", "wayland", "wgpu"] }
 rfd = { workspace = true, features = ["xdg-portal", "tokio"] }

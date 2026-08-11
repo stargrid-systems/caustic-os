@@ -16,6 +16,11 @@ const REGISTRY_PROD: &str = "ghcr.io/stargrid-systems/caustic-os";
 const REGISTRY_DEV: &str = "ghcr.io/stargrid-systems/caustic-os-dev";
 const PAGE_SIZE: usize = 10;
 
+static COSIGN_PUB: &[u8] = match option_env!("CAUSTIC_COSIGN_PUB") {
+    Some(key) => key.as_bytes(),
+    None => &[],
+};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Channel {
     Production,
@@ -621,7 +626,7 @@ impl Installer {
     }
 
     fn after_download(&mut self) -> Task<Message> {
-        if self.simulate || caustic_oci_key::COSIGN_PUB.is_empty() {
+        if self.simulate || COSIGN_PUB.is_empty() {
             tracing::warn!("signature verification is disabled (development build)");
             self.step = Step::VerifyDisabled;
             if self.auto {
@@ -642,7 +647,7 @@ impl Installer {
         };
 
         let registry = self.channel.registry().to_string();
-        let public_key = caustic_oci_key::COSIGN_PUB.to_vec();
+        let public_key = COSIGN_PUB.to_vec();
 
         Task::perform(
             async move {

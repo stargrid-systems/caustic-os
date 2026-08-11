@@ -3,7 +3,6 @@ resolver = "3"
 members = [
     "crates/caustic-installer",
     "crates/caustic-oci",
-    "crates/caustic-oci-key",
     "crates/caustic-ota",
 ]
 
@@ -14,9 +13,7 @@ repository = "https://github.com/stargrid-systems/caustic-os"
 license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
-build-rs = { version = "0.3", default-features = false }
 caustic-oci = { path = "crates/caustic-oci", default-features = false }
-caustic-oci-key = { path = "crates/caustic-oci-key", default-features = false }
 
 anyhow = { version = "1", default-features = false }
 clap = { version = "4", default-features = false }
