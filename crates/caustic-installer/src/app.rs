@@ -771,9 +771,9 @@ fn simulate_tags() -> Task<Message> {
         async {
             tokio::time::sleep(Duration::from_millis(500)).await;
             Ok::<_, String>(vec![
-                "v1.0.0".to_string(),
-                "v0.9.0".to_string(),
-                "v0.8.0".to_string(),
+                "2026.08.11".to_string(),
+                "2026.08.04".to_string(),
+                "2026.07.28".to_string(),
             ])
         },
         Message::TagsLoaded,
@@ -790,6 +790,31 @@ fn simulate_straw() -> impl Straw<(), f32, String> {
     })
 }
 
+fn is_release_tag(tag: &str) -> bool {
+    fn numeric(p: &str) -> bool {
+        !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())
+    }
+    let mut parts = tag.split('.');
+    let Some(y) = parts.next() else {
+        return false;
+    };
+    let Some(m) = parts.next() else {
+        return false;
+    };
+    let Some(p) = parts.next() else {
+        return false;
+    };
+    numeric(y) && numeric(m) && numeric(p) && parts.next().is_none()
+}
+
+fn release_sort_key(tag: &str) -> (u32, u32, u32) {
+    let mut parts = tag.split('.');
+    let y = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    let m = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    let p = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    (y, m, p)
+}
+
 fn load_tags(channel: Channel) -> Task<Message> {
     let registry = channel.registry().to_string();
     Task::perform(
@@ -797,14 +822,10 @@ fn load_tags(channel: Channel) -> Task<Message> {
             caustic_oci::list_tags(&registry, None)
                 .await
                 .map(|tags| {
-                    tags.into_iter()
-                        .filter(|tag| {
-                            !(tag.starts_with("sha256-")
-                                && std::path::Path::new(tag)
-                                    .extension()
-                                    .is_some_and(|ext| ext.eq_ignore_ascii_case("sig")))
-                        })
-                        .collect()
+                    let mut releases: Vec<String> =
+                        tags.into_iter().filter(|tag| is_release_tag(tag)).collect();
+                    releases.sort_by_key(|a| std::cmp::Reverse(release_sort_key(a)));
+                    releases
                 })
                 .map_err(|e| e.to_string())
         },
@@ -950,5 +971,58 @@ mod release_date_tests {
     #[test]
     fn format_created_short_input_unchanged() {
         assert_eq!(format_created("2024"), "2024");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_release_tag, release_sort_key};
+
+    #[test]
+    fn accepts_calver_tags() {
+        assert!(is_release_tag("2026.08.11"));
+        assert!(is_release_tag("2026.8.11"));
+        assert!(is_release_tag("2026.12.0"));
+        assert!(is_release_tag("1999.1.100"));
+        assert!(is_release_tag("0000.00.00"));
+    }
+
+    #[test]
+    fn rejects_non_release_tags() {
+        assert!(!is_release_tag("sha256-deadbeef.sig"));
+        assert!(!is_release_tag("sha256-deadbeef"));
+        assert!(!is_release_tag("main"));
+        assert!(!is_release_tag("latest"));
+        assert!(!is_release_tag("v1.0.0"));
+        assert!(!is_release_tag("abc1234"));
+        assert!(!is_release_tag("2026.08"));
+        assert!(!is_release_tag("2026.08.11.1"));
+        assert!(!is_release_tag("2026.08.11-rc1"));
+        assert!(!is_release_tag(""));
+        assert!(!is_release_tag("2026.08.11 "));
+    }
+
+    #[test]
+    fn sort_key_is_leading_zero_invariant() {
+        assert_eq!(release_sort_key("2026.08.11"), (2026, 8, 11));
+        assert_eq!(
+            release_sort_key("2026.08.11"),
+            release_sort_key("2026.8.11")
+        );
+    }
+
+    #[test]
+    fn sort_key_orders_newest_first() {
+        let mut tags = vec![
+            "2026.07.28".to_string(),
+            "2026.08.11".to_string(),
+            "2026.08.04".to_string(),
+            "2025.12.31".to_string(),
+        ];
+        tags.sort_by_key(|a| std::cmp::Reverse(release_sort_key(a)));
+        assert_eq!(
+            tags,
+            vec!["2026.08.11", "2026.08.04", "2026.07.28", "2025.12.31"]
+        );
     }
 }
