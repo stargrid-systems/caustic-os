@@ -18,7 +18,7 @@ const PAGE_SIZE: usize = 10;
 
 const ICON_WARNING: &str = "⚠️";
 const ICON_CHECK: &str = "✓";
-const BULLET: &str = "·";
+const BULLET_JOINER: &str = " · ";
 
 static COSIGN_PUB_PEM: &[u8] = match option_env!("CAUSTIC_COSIGN_PUB_PEM") {
     Some(key) => key.as_bytes(),
@@ -551,7 +551,7 @@ impl Installer {
             let label = row![
                 column![
                     text(d.description.clone()).size(16),
-                    text(info_parts.join(&format!(" {BULLET} "))).size(12),
+                    text(info_parts.join(BULLET_JOINER)).size(12),
                 ],
                 Space::new().width(Fill),
                 if is_selected {
