@@ -30,7 +30,7 @@ fn verify_layers_with_pubkey(
 ) -> Result<(), Error> {
     let verifier =
         PublicKeyVerifier::try_from(public_key_pem).map_err(|e| Error::Verify(e.to_string()))?;
-    let constraints: Vec<Box<dyn VerificationConstraint>> = vec![Box::new(verifier)];
+    let constraints: [Box<dyn VerificationConstraint>; 1] = [Box::new(verifier)];
     verify_constraints(layers, constraints.iter()).map_err(|e| Error::Verify(e.to_string()))
 }
 

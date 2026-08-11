@@ -16,7 +16,11 @@ const REGISTRY_PROD: &str = "ghcr.io/stargrid-systems/caustic-os";
 const REGISTRY_DEV: &str = "ghcr.io/stargrid-systems/caustic-os-dev";
 const PAGE_SIZE: usize = 10;
 
-static COSIGN_PUB: &[u8] = match option_env!("CAUSTIC_COSIGN_PUB") {
+const ICON_WARNING: &str = "⚠️";
+const ICON_CHECK: &str = "✓";
+const BULLET: &str = "·";
+
+static COSIGN_PUB_PEM: &[u8] = match option_env!("CAUSTIC_COSIGN_PUB_PEM") {
     Some(key) => key.as_bytes(),
     None => &[],
 };
@@ -368,7 +372,11 @@ impl Installer {
             .into(),
             Step::Verify => column![text(t(self.lang, Text::Verifying)).size(18)].into(),
             Step::VerifyDisabled => column![
-                text(format!("⚠️ {}", t(self.lang, Text::VerifyDisabled))).size(18),
+                text(format!(
+                    "{ICON_WARNING} {}",
+                    t(self.lang, Text::VerifyDisabled)
+                ))
+                .size(18),
                 text(t(self.lang, Text::VerifyDisabledHint)).size(14),
             ]
             .spacing(12)
@@ -483,7 +491,7 @@ impl Installer {
                 info,
                 Space::new().width(Fill),
                 if is_selected {
-                    text("✓").size(16)
+                    text(ICON_CHECK).size(16)
                 } else {
                     text("")
                 },
@@ -521,9 +529,14 @@ impl Installer {
     }
 
     fn view_disks(&self, disks: &[Disk], selected: Option<usize>) -> Element<'_, Message> {
-        let warning =
-            container(text(format!("⚠️ {}", t(self.lang, Text::DataLossWarning))).size(14))
-                .padding(8);
+        let warning = container(
+            text(format!(
+                "{ICON_WARNING} {}",
+                t(self.lang, Text::DataLossWarning)
+            ))
+            .size(14),
+        )
+        .padding(8);
 
         let mut list = column![];
 
@@ -538,11 +551,11 @@ impl Installer {
             let label = row![
                 column![
                     text(d.description.clone()).size(16),
-                    text(info_parts.join(" · ")).size(12),
+                    text(info_parts.join(&format!(" {BULLET} "))).size(12),
                 ],
                 Space::new().width(Fill),
                 if is_selected {
-                    text("✓").size(18)
+                    text(ICON_CHECK).size(18)
                 } else {
                     text("")
                 },
@@ -626,7 +639,7 @@ impl Installer {
     }
 
     fn after_download(&mut self) -> Task<Message> {
-        if self.simulate || COSIGN_PUB.is_empty() {
+        if self.simulate || COSIGN_PUB_PEM.is_empty() {
             tracing::warn!("signature verification is disabled (development build)");
             self.step = Step::VerifyDisabled;
             if self.auto {
@@ -647,7 +660,7 @@ impl Installer {
         };
 
         let registry = self.channel.registry().to_string();
-        let public_key = COSIGN_PUB.to_vec();
+        let public_key = COSIGN_PUB_PEM.to_vec();
 
         Task::perform(
             async move {

@@ -82,7 +82,7 @@ jobs:
 
       - name: Build
         env:
-          CAUSTIC_COSIGN_PUB: ${{ secrets.COSIGN_PUBLIC_KEY }}
+          CAUSTIC_COSIGN_PUB_PEM: ${{ secrets.COSIGN_PUBLIC_KEY }}
         run: cargo build --release -p caustic-installer
 
       - name: Create AppImage
@@ -132,7 +132,7 @@ jobs:
 
       - name: Build
         env:
-          CAUSTIC_COSIGN_PUB: ${{ secrets.COSIGN_PUBLIC_KEY }}
+          CAUSTIC_COSIGN_PUB_PEM: ${{ secrets.COSIGN_PUBLIC_KEY }}
         run: cargo build --release -p caustic-installer
 
       - name: Create zip
