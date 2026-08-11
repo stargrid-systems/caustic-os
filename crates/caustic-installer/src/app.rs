@@ -83,6 +83,8 @@ pub enum Message {
     LocalFilePicked(Option<PathBuf>),
     DownloadProgress(f32),
     DownloadFinished(Result<(), String>),
+    VerifyResult(Result<(), String>),
+    VerifyContinue,
     DiskSelected(usize),
     DiskRefreshClicked,
     RpibootClicked,
@@ -98,6 +100,8 @@ enum Step {
     Downloading {
         progress: f32,
     },
+    Verify,
+    VerifyDisabled,
     SelectDisk {
         disks: Vec<Disk>,
         selected: Option<usize>,
@@ -151,6 +155,7 @@ impl Installer {
             }
             Message::TagsLoaded(Err(err))
             | Message::DownloadFinished(Err(err))
+            | Message::VerifyResult(Err(err))
             | Message::FlashFinished(Err(err))
             | Message::RpibootFinished(Err(err)) => {
                 self.handle_error(err);
@@ -179,9 +184,10 @@ impl Installer {
                 }
                 Task::none()
             }
-            Message::DownloadFinished(Ok(())) | Message::RpibootFinished(Ok(())) => {
-                self.enter_disk_selection()
-            }
+            Message::DownloadFinished(Ok(())) => self.after_download(),
+            Message::VerifyResult(Ok(()))
+            | Message::VerifyContinue
+            | Message::RpibootFinished(Ok(())) => self.enter_disk_selection(),
             Message::DiskSelected(index) => {
                 if let Step::SelectDisk { selected, .. } = &mut self.step {
                     *selected = Some(index);
@@ -355,6 +361,13 @@ impl Installer {
             ]
             .spacing(12)
             .into(),
+            Step::Verify => column![text(t(self.lang, Text::Verifying)).size(18)].into(),
+            Step::VerifyDisabled => column![
+                text(format!("⚠️ {}", t(self.lang, Text::VerifyDisabled))).size(18),
+                text(t(self.lang, Text::VerifyDisabledHint)).size(14),
+            ]
+            .spacing(12)
+            .into(),
             Step::SelectDisk { disks, selected } => self.view_disks(disks, *selected),
             Step::RunningRpiboot => {
                 column![text(t(self.lang, Text::RpibootRunning)).size(18)].into()
@@ -396,6 +409,13 @@ impl Installer {
 
                 Some(col.spacing(8).into())
             }
+            Step::VerifyDisabled => Some(
+                button(t(self.lang, Text::Continue))
+                    .width(Fill)
+                    .style(button::primary)
+                    .on_press(Message::VerifyContinue)
+                    .into(),
+            ),
             Step::SelectDisk { selected, .. } => {
                 let mut actions = row![
                     button(t(self.lang, Text::Refresh))
@@ -458,7 +478,7 @@ impl Installer {
                 info,
                 Space::new().width(Fill),
                 if is_selected {
-                    text("\u{2713}").size(16)
+                    text("✓").size(16)
                 } else {
                     text("")
                 },
@@ -496,14 +516,9 @@ impl Installer {
     }
 
     fn view_disks(&self, disks: &[Disk], selected: Option<usize>) -> Element<'_, Message> {
-        let warning = container(
-            text(format!(
-                "\u{26a0}\u{fe0f} {}",
-                t(self.lang, Text::DataLossWarning)
-            ))
-            .size(14),
-        )
-        .padding(8);
+        let warning =
+            container(text(format!("⚠️ {}", t(self.lang, Text::DataLossWarning))).size(14))
+                .padding(8);
 
         let mut list = column![];
 
@@ -518,11 +533,11 @@ impl Installer {
             let label = row![
                 column![
                     text(d.description.clone()).size(16),
-                    text(info_parts.join(" \u{00b7} ")).size(12),
+                    text(info_parts.join(" · ")).size(12),
                 ],
                 Space::new().width(Fill),
                 if is_selected {
-                    text("\u{2713}").size(18)
+                    text("✓").size(18)
                 } else {
                     text("")
                 },
@@ -584,12 +599,7 @@ impl Installer {
 
         if image_path.exists() && std::fs::metadata(&image_path).is_ok_and(|m| m.len() > 0) {
             self.image_path = Some(image_path);
-            let disks = get_disks(self.simulate);
-            self.step = Step::SelectDisk {
-                disks,
-                selected: None,
-            };
-            return Task::none();
+            return self.after_download();
         }
 
         self.image_path = Some(image_path.clone());
@@ -608,6 +618,42 @@ impl Installer {
         });
 
         Task::sip(straw, Message::DownloadProgress, Message::DownloadFinished)
+    }
+
+    fn after_download(&mut self) -> Task<Message> {
+        if self.simulate || caustic_oci_key::COSIGN_PUB.is_empty() {
+            tracing::warn!("signature verification is disabled (development build)");
+            self.step = Step::VerifyDisabled;
+            if self.auto {
+                return delayed_message(Duration::from_secs(1), Message::VerifyContinue);
+            }
+            return Task::none();
+        }
+        self.step = Step::Verify;
+        self.start_verify()
+    }
+
+    fn start_verify(&self) -> Task<Message> {
+        let Some(index) = self.selected_tag else {
+            return Task::none();
+        };
+        let Some(tag) = self.tags.get(index).cloned() else {
+            return Task::none();
+        };
+
+        let registry = self.channel.registry().to_string();
+        let public_key = caustic_oci_key::COSIGN_PUB.to_vec();
+
+        Task::perform(
+            async move {
+                let digest = caustic_oci::resolve_digest(&registry, &tag, None).await?;
+                caustic_oci::verify_artifact(&registry, &digest, &public_key, None).await
+            },
+            |result: Result<(), caustic_oci::Error>| match result {
+                Ok(()) => Message::VerifyResult(Ok(())),
+                Err(err) => Message::VerifyResult(Err(err.to_string())),
+            },
+        )
     }
 
     fn start_rpiboot(&mut self) -> Task<Message> {

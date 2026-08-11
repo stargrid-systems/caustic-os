@@ -1,0 +1,13 @@
+[package]
+name = "caustic-oci-key"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[build-dependencies]
+build-rs = { workspace = true }
+
+[lints]
+workspace = true

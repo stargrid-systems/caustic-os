@@ -81,7 +81,12 @@ jobs:
             libfreetype6-dev
 
       - name: Build
-        run: cargo build --release -p caustic-installer
+        env:
+          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+          CAUSTIC_COSIGN_PUB: cosign.pub
+        run: |
+          printf '%s' "$COSIGN_PUBLIC_KEY" > "$CAUSTIC_COSIGN_PUB"
+          cargo build --release -p caustic-installer
 
       - name: Create AppImage
         env:
@@ -129,7 +134,12 @@ jobs:
         run: rustup toolchain install stable --profile minimal
 
       - name: Build
-        run: cargo build --release -p caustic-installer
+        env:
+          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+          CAUSTIC_COSIGN_PUB: cosign.pub
+        run: |
+          Set-Content -Path "$env:CAUSTIC_COSIGN_PUB" -Value "$env:COSIGN_PUBLIC_KEY" -NoNewline
+          cargo build --release -p caustic-installer
 
       - name: Create zip
         shell: pwsh

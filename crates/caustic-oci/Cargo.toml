@@ -10,6 +10,7 @@ license.workspace = true
 futures-util = { workspace = true, features = ["std"] }
 oci-client = { workspace = true, features = ["rustls-tls"] }
 sha2 = { workspace = true, features = ["alloc"] }
+sigstore = { workspace = true, features = ["cosign-rustls-tls"] }
 tokio = { workspace = true, features = ["fs", "io-util"] }
 
 [lints]

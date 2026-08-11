@@ -43,6 +43,29 @@ pub async fn list_tags(registry: &str, token: Option<&str>) -> Result<Vec<String
     Ok(response.tags)
 }
 
+/// Resolve a tag or digest reference to its manifest digest.
+///
+/// A digest pins the image immutably, so the signature is bound to a fixed
+/// artifact rather than a movable tag.
+///
+/// # Errors
+///
+/// Returns [`Error::Parse`] if the reference cannot be parsed.
+/// Returns [`Error::Fetch`] if the registry request fails.
+pub async fn resolve_digest(
+    registry: &str,
+    reference: &str,
+    token: Option<&str>,
+) -> Result<String, Error> {
+    let reference = parse_ref(registry, reference)?;
+    let client = Client::new(ClientConfig::default());
+    let auth = auth_for(token);
+    client
+        .fetch_manifest_digest(&reference, &auth)
+        .await
+        .map_err(|e| Error::Fetch(e.to_string()))
+}
+
 /// Fetch the image manifest for a specific tag.
 ///
 /// # Errors

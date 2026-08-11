@@ -3,11 +3,13 @@
 pub use oci_client::manifest::{OciDescriptor, OciImageManifest};
 
 pub use self::client::{
-    fetch_manifest, find_layer_by_suffix, list_tags, pull_blob, pull_blob_streaming,
+    fetch_manifest, find_layer_by_suffix, list_tags, pull_blob, pull_blob_streaming, resolve_digest,
 };
+pub use self::cosign::verify_artifact;
 pub use self::verify::{extract_created, extract_version, verify_sha256sums};
 
 mod client;
+mod cosign;
 mod verify;
 
 #[derive(Debug)]
@@ -20,6 +22,7 @@ pub enum Error {
     MissingAnnotation(String),
     ChecksumMismatch(String),
     MissingSha256Sums,
+    Verify(String),
     Other(String),
 }
 
@@ -34,6 +37,7 @@ impl std::fmt::Display for Error {
             Self::MissingAnnotation(s) => write!(f, "Manifest missing {s} annotation"),
             Self::ChecksumMismatch(s) => write!(f, "Checksum mismatch for {s}"),
             Self::MissingSha256Sums => write!(f, "SHA256SUMS file is missing"),
+            Self::Verify(s) => write!(f, "Signature verification failed: {s}"),
             Self::Other(s) => write!(f, "{s}"),
         }
     }
