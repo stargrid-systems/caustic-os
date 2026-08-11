@@ -31,6 +31,7 @@ tokio = { version = "1", default-features = false }
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 which = { version = "8", default-features = false }
+windows = { version = "0.62", default-features = false }
 
 [workspace.lints.clippy]
 cargo = { level = "warn", priority = -1 }

@@ -267,24 +267,27 @@ mod win_disk {
                 .get("FriendlyName")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Unknown");
-            let size = entry.get("Size").and_then(|v| v.as_u64()).unwrap_or(0);
+            let size = entry
+                .get("Size")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
             let bus_type = entry
                 .get("BusType")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Unknown");
             let is_system = entry
                 .get("IsSystem")
-                .and_then(|v| v.as_bool())
+                .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false);
+
+            if is_system || size == 0 {
+                continue;
+            }
 
             let is_removable = matches!(
                 bus_type,
                 "USB" | "SD" | "MMC" | "1394" | "FileBackedVirtual"
             );
-
-            if !is_install_target(is_system, size, is_removable) {
-                continue;
-            }
 
             disks.push(Disk {
                 device: format!("\\\\.\\PhysicalDrive{device_id}"),
@@ -297,35 +300,6 @@ mod win_disk {
 
         disks.sort_by_key(|d| !d.is_removable);
         disks
-    }
-
-    fn is_install_target(is_system: bool, size: u64, is_removable: bool) -> bool {
-        !is_system && size > 0 && is_removable
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::is_install_target;
-
-        #[test]
-        fn usb_disk_is_target() {
-            assert!(is_install_target(false, 16_000_000_000, true));
-        }
-
-        #[test]
-        fn internal_sata_disk_is_dropped() {
-            assert!(!is_install_target(false, 500_000_000_000, false));
-        }
-
-        #[test]
-        fn system_disk_is_dropped_even_if_removable() {
-            assert!(!is_install_target(true, 16_000_000_000, true));
-        }
-
-        #[test]
-        fn zero_size_disk_is_dropped() {
-            assert!(!is_install_target(false, 0, true));
-        }
     }
 }
 

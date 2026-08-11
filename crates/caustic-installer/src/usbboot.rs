@@ -1,9 +1,11 @@
+#[cfg(target_os = "linux")]
 use std::path::Path;
 use std::process::Stdio;
 
 #[derive(Debug)]
 pub enum Error {
     NotFound,
+    #[allow(dead_code)]
     NoElevator,
     ExecutionFailed(String),
 }

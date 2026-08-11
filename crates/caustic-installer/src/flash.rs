@@ -1,8 +1,11 @@
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::sync::Arc;
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+#[cfg(target_os = "windows")]
+pub use self::sys::run_privileged_child;
+mod sys;
 
 const CHUNK_SIZE: usize = 4 * 1024 * 1024;
 const WRITE_BUFFER_SIZE: usize = 8 * 1024 * 1024;
@@ -17,23 +20,12 @@ pub async fn flash_image(
         .map_err(|e| Error(e.to_string()))?
         .len();
 
-    #[cfg(target_os = "macos")]
-    unmount_disk(&target).await;
+    sys::prepare(&target).await;
 
     match try_open_device(&target).await {
         Ok(output) => flash_direct(image, output, file_size, progress).await,
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            #[cfg(target_os = "linux")]
-            {
-                flash_elevated(image, &target, file_size, progress).await
-            }
-            #[cfg(not(target_os = "linux"))]
-            {
-                let _ = e;
-                Err(Error(
-                    "Permission denied. Run the installer as administrator.".to_string(),
-                ))
-            }
+            sys::flash_elevated(image, &target, file_size, progress).await
         }
         Err(e) => Err(Error(e.to_string())),
     }
@@ -41,17 +33,6 @@ pub async fn flash_image(
 
 async fn try_open_device(target: &str) -> std::io::Result<tokio::fs::File> {
     tokio::fs::OpenOptions::new().write(true).open(target).await
-}
-
-#[cfg(target_os = "macos")]
-async fn unmount_disk(target: &str) {
-    let disk = target.replace("/dev/rdisk", "/dev/disk");
-    let _ = tokio::process::Command::new("diskutil")
-        .args(["unmountDisk", &disk])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await;
 }
 
 async fn flash_direct(
@@ -92,92 +73,6 @@ async fn flash_direct(
         .await
         .map_err(|e| Error(e.to_string()))?;
     Ok(())
-}
-
-#[cfg(target_os = "linux")]
-async fn flash_elevated(
-    image: PathBuf,
-    target: &str,
-    file_size: u64,
-    progress: Arc<dyn Fn(u64, u64) + Send + Sync>,
-) -> Result<(), Error> {
-    if which::which("pkexec").is_err() {
-        return Err(Error(
-            "pkexec is required to flash without root".to_string(),
-        ));
-    }
-
-    let if_arg = format!("if={}", image.display());
-    let of_arg = format!("of={target}");
-
-    let mut cmd = tokio::process::Command::new("pkexec");
-    cmd.args([
-        "dd",
-        &if_arg,
-        &of_arg,
-        "bs=4M",
-        "conv=fsync",
-        "status=progress",
-    ])
-    .stderr(Stdio::piped())
-    .stdout(Stdio::null());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| Error(format!("Failed to start dd: {e}")))?;
-
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| Error("Failed to capture dd stderr".to_string()))?;
-
-    let mut reader = tokio::io::BufReader::new(stderr);
-    let mut line = Vec::new();
-    let mut last_output = String::new();
-
-    loop {
-        line.clear();
-        let n = reader
-            .read_until(b'\r', &mut line)
-            .await
-            .map_err(|e| Error(format!("Failed reading dd output: {e}")))?;
-
-        if n == 0 {
-            break;
-        }
-
-        let s = String::from_utf8_lossy(&line);
-        let trimmed = s.trim();
-
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if let Some(bytes) = parse_dd_progress(trimmed) {
-            progress(bytes, file_size);
-        } else {
-            last_output = trimmed.to_string();
-        }
-    }
-
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| Error(format!("Failed waiting for dd: {e}")))?;
-
-    if !status.success() {
-        return Err(Error(if last_output.is_empty() {
-            format!("dd exited with status {status}")
-        } else {
-            last_output
-        }));
-    }
-
-    Ok(())
-}
-
-fn parse_dd_progress(s: &str) -> Option<u64> {
-    s.split_whitespace().next()?.parse().ok()
 }
 
 #[derive(Debug)]

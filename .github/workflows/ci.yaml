@@ -50,6 +50,31 @@ jobs:
       - name: test
         run: cargo test -p caustic-oci -p caustic-ota --locked
 
+  installer:
+    name: Installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-26.04
+          - os: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: rustfmt
+        run: cargo fmt --check
+
+      - name: clippy
+        run: cargo clippy -p caustic-installer --all-targets --locked -- -D warnings
+
+      - name: test
+        run: cargo test -p caustic-installer --locked
+
   build-images:
     name: Build images (merge queue)
     runs-on: ubuntu-26.04-arm
@@ -246,16 +271,17 @@ jobs:
     name: CI Pass
     runs-on: ubuntu-slim
     if: always()
-    needs: [quick-checks, rust, build-images, test]
+    needs: [quick-checks, rust, installer, build-images, test]
     steps:
       - name: Evaluate job results
         env:
           QUICK_CHECKS: ${{ needs.quick-checks.result }}
           RUST: ${{ needs.rust.result }}
+          INSTALLER: ${{ needs.installer.result }}
           BUILD_IMAGES: ${{ needs.build-images.result }}
           TEST: ${{ needs.test.result }}
         run: |
-          for name in QUICK_CHECKS RUST BUILD_IMAGES TEST; do
+          for name in QUICK_CHECKS RUST INSTALLER BUILD_IMAGES TEST; do
             result="${!name}"
             echo "$name: $result"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
