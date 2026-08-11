@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -79,6 +79,8 @@ pub enum Message {
     PrevPage,
     ChannelSelected(Channel),
     DownloadClicked,
+    LocalFileClicked,
+    LocalFilePicked(Option<PathBuf>),
     DownloadProgress(f32),
     DownloadFinished(Result<(), String>),
     DiskSelected(usize),
@@ -166,6 +168,8 @@ impl Installer {
             Message::PrevPage => self.goto_page(self.current_page.saturating_sub(1)),
             Message::ChannelSelected(channel) => self.select_channel(channel),
             Message::DownloadClicked => self.start_download(),
+            Message::LocalFileClicked => pick_image_file(),
+            Message::LocalFilePicked(maybe_path) => self.use_local_file(maybe_path),
             Message::DownloadProgress(progress) => {
                 if let Step::Downloading {
                     progress: current, ..
@@ -258,6 +262,19 @@ impl Installer {
         } else {
             load_tags(channel)
         }
+    }
+
+    fn use_local_file(&mut self, maybe_path: Option<PathBuf>) -> Task<Message> {
+        let Some(path) = maybe_path else {
+            return Task::none();
+        };
+        if validate_image_file(&path).is_err() {
+            self.handle_error(t(self.lang, Text::LocalFileInvalid).to_string());
+            return Task::none();
+        }
+        self.error = None;
+        self.image_path = Some(path);
+        self.enter_disk_selection()
     }
 
     fn enter_disk_selection(&mut self) -> Task<Message> {
@@ -360,13 +377,25 @@ impl Installer {
 
     fn view_footer(&self) -> Element<'_, Message> {
         let footer: Option<Element<'_, Message>> = match &self.step {
-            Step::SelectRelease if self.selected_tag.is_some() => Some(
-                button(t(self.lang, Text::Download))
-                    .width(Fill)
-                    .style(button::primary)
-                    .on_press(Message::DownloadClicked)
-                    .into(),
-            ),
+            Step::SelectRelease => {
+                let mut col = column![
+                    button(t(self.lang, Text::UseLocalFile))
+                        .width(Fill)
+                        .style(button::secondary)
+                        .on_press(Message::LocalFileClicked)
+                ];
+
+                if self.selected_tag.is_some() {
+                    col = col.push(
+                        button(t(self.lang, Text::Download))
+                            .width(Fill)
+                            .style(button::primary)
+                            .on_press(Message::DownloadClicked),
+                    );
+                }
+
+                Some(col.spacing(8).into())
+            }
             Step::SelectDisk { selected, .. } => {
                 let mut actions = row![
                     button(t(self.lang, Text::Refresh))
@@ -699,6 +728,34 @@ impl Installer {
 
         Task::batch(tasks)
     }
+}
+
+fn pick_image_file() -> Task<Message> {
+    Task::perform(
+        async {
+            rfd::AsyncFileDialog::new()
+                .add_filter("images", &["img", "iso", "gz"])
+                .pick_file()
+                .await
+                .map(|handle| handle.path().to_path_buf())
+        },
+        Message::LocalFilePicked,
+    )
+}
+
+fn validate_image_file(path: &Path) -> Result<(), ()> {
+    let valid_ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "img" | "iso" | "gz"));
+    if !valid_ext {
+        return Err(());
+    }
+    let len = std::fs::metadata(path).map(|m| m.len()).map_err(|_| ())?;
+    if len == 0 {
+        return Err(());
+    }
+    Ok(())
 }
 
 fn delayed_message(delay: Duration, msg: Message) -> Task<Message> {
