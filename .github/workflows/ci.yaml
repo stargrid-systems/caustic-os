@@ -131,6 +131,9 @@ jobs:
             .#nixosConfigurations.production.config.system.build.diskImage \
             .#nixosConfigurations.production.config.system.build.initialRamdisk \
             .#nixosConfigurations.production.config.system.build.toplevel \
+            .#nixosConfigurations.devImage.config.system.build.verityArtifacts \
+            .#nixosConfigurations.devImage.config.system.build.diskImage \
+            .#nixosConfigurations.devImage.config.system.build.toplevel \
             nixpkgs#qemu \
             nixpkgs#raspberrypifw \
             nixpkgs#dtc
@@ -266,6 +269,87 @@ jobs:
           fi
 
           echo "::notice::QEMU boot test PASSED"
+
+      - name: Dev image boot test
+        timeout-minutes: 15
+        run: |
+          KERNEL=$(nix path-info .#nixosConfigurations.production.config.boot.kernelPackages.kernel)
+          INITRD=$(nix path-info .#nixosConfigurations.production.config.system.build.initialRamdisk)/initrd
+          VERITY=$(nix path-info .#nixosConfigurations.devImage.config.system.build.verityArtifacts)
+          DISK=$(nix path-info .#nixosConfigurations.devImage.config.system.build.diskImage)
+          TOPLEVEL=$(nix path-info .#nixosConfigurations.devImage.config.system.build.toplevel)
+          QEMU=$(nix path-info nixpkgs#qemu)/bin/qemu-system-aarch64
+          RPIFW=$(nix path-info nixpkgs#raspberrypifw)
+          FDTPUT=$(nix path-info nixpkgs#dtc)/bin/fdtput
+
+          source "$VERITY/verity.txt"
+          SECTORS=$(( data_blocks * 8 ))
+
+          WORKDIR=$(mktemp -d)
+          cp "$KERNEL/Image" "$WORKDIR/Image"
+          cp "$INITRD" "$WORKDIR/initrd"
+          install -m 644 "$DISK" "$WORKDIR/disk.img"
+          cp "$RPIFW/share/raspberrypi/boot/bcm2711-rpi-4-b.dtb" "$WORKDIR/bcm2711-rpi-4-b.dtb"
+          chmod u+w "$WORKDIR/bcm2711-rpi-4-b.dtb"
+
+          echo "=== Disabling watchdog in DTB ==="
+          "$FDTPUT" -t s "$WORKDIR/bcm2711-rpi-4-b.dtb" /soc/watchdog@7e100000 status disabled
+
+          SERIAL_LOG="$WORKDIR/qemu-output.log"
+
+          echo "=== Running dev image QEMU (300s timeout) ==="
+
+          timeout 300 "$QEMU" \
+            -M raspi4b,accel=kvm:tcg \
+            -cpu cortex-a72 \
+            -serial mon:stdio \
+            -display none \
+            -no-reboot \
+            -no-shutdown \
+            -watchdog-action none \
+            -kernel "$WORKDIR/Image" \
+            -initrd "$WORKDIR/initrd" \
+            -dtb "$WORKDIR/bcm2711-rpi-4-b.dtb" \
+            -drive file="$WORKDIR/disk.img",format=raw,if=sd \
+            -netdev user,id=n1,hostfwd=tcp::8080-:80,hostfwd=tcp::8443-:443 \
+            -device usb-net,netdev=n1 \
+            -append "init=$TOPLEVEL/init console=ttyAMA1,115200 earlycon=pl011,mmio32,0xfe201000 ignore_loglevel panic=30 systemd.log_target=kmsg systemd.log_level=info dm-mod.create=\"vroot,,0,ro,0 $SECTORS verity 1 /dev/mmcblk1p5 /dev/mmcblk1p5 4096 4096 $data_blocks $data_blocks sha256 $root_hash $salt 1 restart_on_corruption\" rootwait" \
+            2>&1 | tee "$SERIAL_LOG" || true
+
+          echo "=== Dev image serial output (last 200 lines) ==="
+          tail -200 "$SERIAL_LOG" 2>/dev/null || echo "(serial log not found)"
+
+          if grep -q "Emergency Mode" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::error::FAILED: dev image entered emergency mode"
+            exit 1
+          fi
+
+          if grep -qE "systemd\[1\]:.*running in system mode" "$SERIAL_LOG" 2>/dev/null \
+             && grep -q "dm-0.*is ready" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::notice::Dev image boot chain completed"
+          else
+            echo "::error::FAILED: dev image boot chain did not complete"
+            exit 1
+          fi
+
+          if grep -q "Started Serial Getty on ttyAMA1" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::notice::Dev serial console started"
+          else
+            echo "::error::FAILED: serial getty did not start on dev image"
+            exit 1
+          fi
+
+          if grep -qiE "Failed to start Serial Getty|start-limit-hit" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::error::FAILED: serial getty crashed or hit the restart limit"
+            exit 1
+          fi
+
+          if grep -qiE "helper binary execve failed|Authentication service cannot retrieve" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::error::FAILED: serial console login failure (pam_unix helper missing)"
+            exit 1
+          fi
+
+          echo "::notice::Dev image boot test PASSED"
 
   ci-pass:
     name: CI Pass
