@@ -33,6 +33,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    environment.systemPackages = [ cfg.package ];
+
     systemd.services.caustic-ota = {
       description = "Caustic OS OTA update check";
       after = [ "network-online.target" ];
