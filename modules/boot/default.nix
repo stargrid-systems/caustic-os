@@ -279,6 +279,11 @@ in
       ShutdownWatchdogSec = "10min";
     };
 
+    # local-fs.target is briefly stopped during boot to reconcile the separate
+    # /nix/store squashfs mount. suid-sgid-wrappers has RequiresMountsFor=/nix/store,
+    # so stopping nix-store.mount kills it mid-run. Run it at multi-user instead.
+    systemd.services.suid-sgid-wrappers.wantedBy = lib.mkForce [ "multi-user.target" ];
+
     boot.initrd.systemd.services."trigger-dm-0" = {
       description = "Trigger uevent for dm-0 block device";
       after = [
