@@ -223,6 +223,13 @@ jobs:
             exit 1
           fi
 
+          if grep -q "Finished Create SUID/SGID Wrappers" "$SERIAL_LOG" 2>/dev/null; then
+            echo "::notice::SUID/SGID wrappers created"
+          else
+            echo "::error::FAILED: suid-sgid-wrappers did not finish"
+            exit 1
+          fi
+
           if grep -qi "dhcp\|dhcpcd\|10\.0\.2\." "$SERIAL_LOG" 2>/dev/null; then
             echo "::notice::DHCP activity detected in serial log"
           else
