@@ -19,6 +19,8 @@ in
 {
   users.users.root.password = "";
 
+  environment.systemPackages = [ pkgs.sshx ];
+
   services.dropbear = {
     enable = true;
     allowPasswordAuth = true;
