@@ -20,7 +20,7 @@ clap = { version = "4", default-features = false }
 directories = { version = "6", default-features = false }
 futures-util = { version = "0.3", default-features = false }
 iced = { version = "0.14", default-features = false }
-oci-client = { version = "0.17", default-features = false }
+oci-client = { version = "0.18", default-features = false }
 plist = { version = "1", default-features = false }
 rfd = { version = "0.17", default-features = false }
 rustix = { version = "1", default-features = false }
